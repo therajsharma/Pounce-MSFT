@@ -20,11 +20,17 @@ if ! command -v az >/dev/null 2>&1; then
 fi
 
 echo "Deploying Pounce Sentinel Azure scaffold to ${AZURE_RESOURCE_GROUP}"
-az deployment group create \
-  --name "${DEPLOYMENT_NAME}" \
-  --resource-group "${AZURE_RESOURCE_GROUP}" \
-  --template-file infra/bicep/main.bicep \
-  --parameters "@${PARAMETERS_FILE}" "${EXTRA_PARAMETERS[@]}"
+DEPLOY_ARGS=(
+  --name "${DEPLOYMENT_NAME}"
+  --resource-group "${AZURE_RESOURCE_GROUP}"
+  --template-file infra/bicep/main.bicep
+  --parameters "@${PARAMETERS_FILE}"
+)
+if (( ${#EXTRA_PARAMETERS[@]} > 0 )); then
+  DEPLOY_ARGS+=("${EXTRA_PARAMETERS[@]}")
+fi
+
+az deployment group create "${DEPLOY_ARGS[@]}"
 
 mkdir -p .azure
 az deployment group show \

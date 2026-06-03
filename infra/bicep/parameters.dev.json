@@ -21,10 +21,10 @@
       "value": false
     },
     "deployStaticWebApp": {
-      "value": false
+      "value": true
     },
     "staticWebAppRepositoryUrl": {
-      "value": ""
+      "value": "https://github.com/therajsharma/Pounce-MSFT"
     },
     "staticWebAppBranch": {
       "value": "main"
