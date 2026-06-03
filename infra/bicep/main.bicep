@@ -14,6 +14,9 @@ param staticWebAppLocation string = 'eastus2'
 @description('Azure region for Cosmos DB. Keep separate because new subscriptions may hit regional capacity limits.')
 param cosmosLocation string = 'eastus2'
 
+@description('Azure region for the Azure Functions app. Keep separate because App Service quota can vary by region.')
+param functionAppLocation string = 'centralus'
+
 @description('Deploy the Azure Functions compute plan and API host. Set false when the subscription has no compute quota yet.')
 param deployFunctionApp bool = false
 
@@ -69,7 +72,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 
 resource plan 'Microsoft.Web/serverfarms@2023-12-01' = if (deployFunctionApp) {
   name: planName
-  location: location
+  location: functionAppLocation
   tags: tags
   sku: {
     name: 'Y1'
@@ -82,7 +85,7 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = if (deployFunctionApp) {
 
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
   name: functionName
-  location: location
+  location: functionAppLocation
   tags: tags
   kind: 'functionapp,linux'
   identity: {

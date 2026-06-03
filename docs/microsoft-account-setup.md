@@ -12,6 +12,7 @@ Collect these values outside the repo:
 - Azure region
 - Static Web Apps region, default `eastus2` because Static Web Apps is not available in every Azure region
 - Cosmos DB region, default `eastus2` because new/free subscriptions may hit regional capacity limits in `eastus`
+- Azure Functions region, default `centralus` because this subscription currently fails Function App preflight in `eastus` with `Current Limit (Total VMs): 0`
 - Foundry project endpoint
 - Foundry agent ID
 - Teams bot app ID
@@ -81,6 +82,7 @@ After the subscription has compute quota and this repo is pushed to GitHub, upda
 ```json
 {
   "deployFunctionApp": { "value": true },
+  "functionAppLocation": { "value": "centralus" },
   "deployStaticWebApp": { "value": true },
   "staticWebAppRepositoryUrl": { "value": "https://github.com/<owner>/<repo>" },
   "staticWebAppBranch": { "value": "main" }

@@ -10,6 +10,8 @@ fi
 : "${AZURE_LOCATION:=eastus}"
 
 PARAMETERS_FILE="${1:-infra/bicep/parameters.dev.json}"
+shift || true
+EXTRA_PARAMETERS=("$@")
 DEPLOYMENT_NAME="${DEPLOYMENT_NAME:-main}"
 
 if ! command -v az >/dev/null 2>&1; then
@@ -22,7 +24,7 @@ az deployment group create \
   --name "${DEPLOYMENT_NAME}" \
   --resource-group "${AZURE_RESOURCE_GROUP}" \
   --template-file infra/bicep/main.bicep \
-  --parameters "@${PARAMETERS_FILE}"
+  --parameters "@${PARAMETERS_FILE}" "${EXTRA_PARAMETERS[@]}"
 
 mkdir -p .azure
 az deployment group show \
