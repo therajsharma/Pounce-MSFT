@@ -35,6 +35,20 @@ SEEDED_INTEL: tuple[IntelRecord, ...] = (
     ),
     IntelRecord(
         ecosystem="npm",
+        package_name="left-pad",
+        version="1.3.0",
+        verdict="block",
+        risk_score=88,
+        policy_id="supply-chain-demo-block",
+        reasons=(
+            "Seeded installable block fixture",
+            "Used to verify pull request dependency gates",
+        ),
+        evidence_label="Seeded installable npm block fixture",
+        evidence_url="https://example.invalid/pounce/demo-intel/left-pad",
+    ),
+    IntelRecord(
+        ecosystem="npm",
         package_name="minimist",
         version="1.2.8",
         verdict="warn",
@@ -84,4 +98,3 @@ def find_seeded_record(ecosystem: str, package_name: str, version: str) -> Intel
         ):
             return record
     return None
-

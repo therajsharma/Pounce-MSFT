@@ -20,6 +20,22 @@ def test_blocks_seeded_malicious_dependency() -> None:
     assert "Known malicious package" in result["reasons"]
 
 
+def test_blocks_installable_demo_dependency() -> None:
+    result = vet_package(
+        {
+            "ecosystem": "npm",
+            "packageName": "left-pad",
+            "version": "1.3.0",
+            "source": "github",
+            "repository": "org/agent-service",
+            "actor": "github-actions",
+        }
+    )
+
+    assert result["verdict"] == "block"
+    assert result["policyId"] == "supply-chain-demo-block"
+
+
 def test_warns_on_floating_version() -> None:
     result = vet_package(
         {
@@ -45,4 +61,3 @@ def test_allows_safe_exact_dependency() -> None:
 
     assert result["verdict"] == "allow"
     assert result["riskScore"] == 12
-
