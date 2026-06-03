@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pounce_sentinel.api import scan_manifest, service_status, vet_dependency
+from pounce_sentinel.api import create_exception, scan_manifest, service_status, vet_dependency
 
 
 def test_status_reports_local_seeded_mode() -> None:
@@ -41,3 +41,20 @@ def test_scan_manifest_counts_blocked_dependencies(tmp_path, monkeypatch) -> Non
     assert result["blockedCount"] == 1
     assert result["warningCount"] == 0
 
+
+def test_create_exception_persists_request(tmp_path, monkeypatch) -> None:
+    audit_path = tmp_path / "verdicts.jsonl"
+    monkeypatch.setenv("POUNCE_SENTINEL_AUDIT_PATH", str(audit_path))
+
+    result = create_exception(
+        {
+            "auditId": "ps-123",
+            "reason": "approved test exception",
+            "approver": "security-reviewer",
+        }
+    )
+
+    assert result["statusCode"] == 202
+    assert result["exceptionId"] == "ex-ps-123"
+    assert result["requestedAt"].endswith("Z")
+    assert "ps-123" in audit_path.read_text(encoding="utf-8")

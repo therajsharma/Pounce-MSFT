@@ -1,22 +1,29 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from pounce_sentinel.manifests import scan_dependencies
 from pounce_sentinel.policy import vet_package
-from pounce_sentinel.storage import append_verdict, list_recent_verdicts
+from pounce_sentinel.storage import (
+    append_exception,
+    append_verdict,
+    list_recent_verdicts,
+    storage_backend,
+)
 
 
 def service_status() -> dict[str, Any]:
+    backend = storage_backend()
     return {
         "service": "pounce-sentinel-policy-api",
         "status": "healthy",
-        "mode": "local-seeded" if not _has_cloud_config() else "azure-ready",
+        "mode": "azure-ready" if backend == "cosmos" else "local-seeded",
         "integrations": {
             "foundry": "configured-by-openapi",
             "github": "action-ready",
             "teams": "bot-ready",
-            "azureAudit": "local-file" if not _has_cloud_config() else "cloud-configured",
+            "azureAudit": backend,
         },
         "feeds": [
             {"name": "seeded-malware-intel", "status": "fresh", "updatedAgo": "1 min"},
@@ -75,21 +82,15 @@ def create_exception(payload: dict[str, Any]) -> dict[str, Any]:
             "error": "auditId and reason are required for exception approval",
         }
 
-    return {
+    requested_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    exception = {
         "statusCode": 202,
         "exceptionId": f"ex-{audit_id}",
         "auditId": audit_id,
         "approver": approver,
         "status": "pending-cloud-workflow",
         "reason": reason,
+        "requestedAt": requested_at,
     }
-
-
-def _has_cloud_config() -> bool:
-    try:
-        import os
-
-        return bool(os.getenv("AZURE_COSMOS_ACCOUNT_NAME") or os.getenv("AZURE_FUNCTION_APP_NAME"))
-    except Exception:
-        return False
-
+    append_exception(exception)
+    return exception

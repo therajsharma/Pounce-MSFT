@@ -43,6 +43,7 @@ var functionName = '${normalizedPrefix}-api'
 var cosmosName = '${normalizedPrefix}-cosmos'
 var keyVaultName = '${normalizedPrefix}-kv'
 var staticWebAppName = '${normalizedPrefix}-dashboard'
+var keyVaultSecretsUserRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageName
@@ -114,8 +115,44 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
           value: 'azure'
         }
         {
+          name: 'POUNCE_SENTINEL_AUDIT_PATH'
+          value: '/tmp/pounce-sentinel/verdicts.jsonl'
+        }
+        {
           name: 'AZURE_COSMOS_ACCOUNT_NAME'
           value: cosmos.name
+        }
+        {
+          name: 'AZURE_COSMOS_DATABASE_NAME'
+          value: database.name
+        }
+        {
+          name: 'AZURE_COSMOS_VERDICTS_CONTAINER'
+          value: verdicts.name
+        }
+        {
+          name: 'AZURE_COSMOS_EXCEPTIONS_CONTAINER'
+          value: exceptions.name
+        }
+        {
+          name: 'AZURE_COSMOS_CONNECTION_STRING'
+          value: '@Microsoft.KeyVault(SecretUri=https://${keyVault.name}.vault.azure.net/secrets/pounce-cosmos-connection-string/)'
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'true'
+        }
+        {
+          name: 'ENABLE_ORYX_BUILD'
+          value: 'true'
+        }
+        {
+          name: 'PYTHON_ISOLATE_WORKER_DEPENDENCIES'
+          value: '1'
+        }
+        {
+          name: 'FUNCTIONS_EXTENSION_VERSION'
+          value: '~4'
         }
       ]
     }
@@ -237,6 +274,16 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
       family: 'A'
       name: 'standard'
     }
+  }
+}
+
+resource functionAppKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctionApp) {
+  name: guid(keyVault.id, functionName, 'key-vault-secrets-user')
+  scope: keyVault
+  properties: {
+    roleDefinitionId: keyVaultSecretsUserRoleDefinitionId
+    principalId: functionApp!.identity.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
