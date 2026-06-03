@@ -136,6 +136,14 @@ bash scripts/azure-connect.sh
    }
    ```
 
+Current dev import:
+
+- Foundry project endpoint: `https://pounce-agentic-flow-resource.services.ai.azure.com/api/projects/pounce-agentic-flow`
+- Foundry project connection: `pounce-sentinel-api`
+- Connection key name: `x-functions-key`
+- Imported agent version: `pounce-sentinel-policy-guard:1`
+- API base URL in OpenAPI spec: `https://pouncesentineldev-api.azurewebsites.net/api`
+
 ## Teams setup
 
 1. Register a bot in Azure Bot Service or Teams Developer Portal.

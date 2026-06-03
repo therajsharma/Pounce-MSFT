@@ -4,8 +4,10 @@ info:
   version: 0.1.0
   description: Vet dependencies before a Microsoft Foundry agent installs or edits them.
 servers:
-  - url: https://REPLACE_WITH_FUNCTION_APP_HOST/api
-    description: Replace with the deployed Azure Functions API base URL.
+  - url: https://pouncesentineldev-api.azurewebsites.net/api
+    description: Deployed Azure Functions API base URL.
+security:
+  - functionKey: []
 paths:
   /v1/vet-dependency:
     post:
@@ -26,6 +28,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/VerdictResponse'
 components:
+  securitySchemes:
+    functionKey:
+      type: apiKey
+      in: header
+      name: x-functions-key
   schemas:
     VetDependencyRequest:
       type: object
@@ -99,4 +106,3 @@ components:
         createdAt:
           type: string
           format: date-time
-
