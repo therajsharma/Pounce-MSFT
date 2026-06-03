@@ -1,0 +1,10 @@
+[project]
+name = "pounce-sentinel"
+version = "0.1.0"
+description = "Microsoft-native scaffold for agentic supply-chain security."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["services/policy-api"]
+testpaths = ["services/policy-api/tests"]
+

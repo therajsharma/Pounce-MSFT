@@ -1,0 +1,18 @@
+name: Pounce Sentinel Dependency Gate
+description: Vet dependency changes with Pounce Sentinel before PR merge.
+author: Pounce Sentinel
+inputs:
+  api-base-url:
+    description: Base URL for the Pounce Sentinel API.
+    required: true
+  api-key:
+    description: API key or function key for the Pounce Sentinel API.
+    required: false
+  manifest-path:
+    description: Dependency manifest to scan.
+    required: false
+    default: package.json
+runs:
+  using: node20
+  main: dist/main.js
+

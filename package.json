@@ -1,0 +1,18 @@
+{
+  "name": "pounce-sentinel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Microsoft-native scaffold for agentic supply-chain security.",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:dashboard": "pnpm --filter @pounce-sentinel/dashboard dev",
+    "test": "pnpm -r test && bash scripts/python-test.sh",
+    "test:python": "bash scripts/python-test.sh",
+    "test:ts": "pnpm -r test",
+    "smoke": "bash scripts/dev-smoke.sh"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}

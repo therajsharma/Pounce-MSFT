@@ -1,0 +1,102 @@
+openapi: 3.0.3
+info:
+  title: Pounce Sentinel Foundry Tool
+  version: 0.1.0
+  description: Vet dependencies before a Microsoft Foundry agent installs or edits them.
+servers:
+  - url: https://REPLACE_WITH_FUNCTION_APP_HOST/api
+    description: Replace with the deployed Azure Functions API base URL.
+paths:
+  /v1/vet-dependency:
+    post:
+      operationId: vet_dependency
+      summary: Vet an exact dependency release.
+      description: Returns allow, warn, or block with policy evidence and audit metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VetDependencyRequest'
+      responses:
+        '200':
+          description: Dependency verdict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictResponse'
+components:
+  schemas:
+    VetDependencyRequest:
+      type: object
+      required:
+        - ecosystem
+        - packageName
+        - version
+      properties:
+        ecosystem:
+          type: string
+          enum: [npm, pypi]
+        packageName:
+          type: string
+          example: event-stream
+        version:
+          type: string
+          example: 3.3.7
+        source:
+          type: string
+          example: foundry
+        repository:
+          type: string
+          example: org/agent-service
+        actor:
+          type: string
+          example: foundry-agent
+    EvidenceItem:
+      type: object
+      properties:
+        source:
+          type: string
+        label:
+          type: string
+        url:
+          type: string
+    VerdictResponse:
+      type: object
+      properties:
+        auditId:
+          type: string
+        verdict:
+          type: string
+          enum: [allow, warn, block]
+        riskScore:
+          type: integer
+        ecosystem:
+          type: string
+        packageName:
+          type: string
+        version:
+          type: string
+        source:
+          type: string
+        repository:
+          type: string
+        actor:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+        recommendedVersion:
+          type: string
+          nullable: true
+        policyId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+

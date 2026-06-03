@@ -1,0 +1,31 @@
+name: Pounce Sentinel Dependency Gate
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - "**/package.json"
+      - requirements.txt
+      - "**/requirements.txt"
+
+jobs:
+  dependency-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @pounce-sentinel/github-action build
+      - name: Vet root package.json
+        uses: ./packages/github-action
+        with:
+          api-base-url: ${{ secrets.POUNCE_SENTINEL_API_BASE_URL }}
+          api-key: ${{ secrets.POUNCE_SENTINEL_API_KEY }}
+          manifest-path: package.json
+

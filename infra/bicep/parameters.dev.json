@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourcePrefix": {
+      "value": "pouncesentineldev"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "staticWebAppLocation": {
+      "value": "eastus2"
+    },
+    "cosmosLocation": {
+      "value": "eastus2"
+    },
+    "deployFunctionApp": {
+      "value": false
+    },
+    "deployStaticWebApp": {
+      "value": false
+    },
+    "staticWebAppRepositoryUrl": {
+      "value": ""
+    },
+    "staticWebAppBranch": {
+      "value": "main"
+    },
+    "tags": {
+      "value": {
+        "product": "pounce-sentinel",
+        "environment": "dev",
+        "owner": "pounce-sentinel"
+      }
+    }
+  }
+}
