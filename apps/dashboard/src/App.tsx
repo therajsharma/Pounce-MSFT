@@ -32,9 +32,43 @@ import type { ServiceFeed, SourceKind, TimelineRow, VerdictKind, VerdictRow, Ver
 type QueueTab = 'Risk Queue' | 'Dependencies' | 'Tool Calls' | 'Repos';
 type PanelTab = 'Details' | 'Vulnerabilities' | 'Provenance' | 'Policy';
 type SidebarItem = 'Overview' | 'Risk Queue' | 'Dependencies' | 'Tool Calls' | 'Repos' | 'Policies' | 'Exceptions' | 'Audit Log' | 'Reports' | 'Settings';
+type DashboardSettings = {
+  defaultWindow: string;
+  autoRefresh: boolean;
+  notifyBlocks: boolean;
+  compactRows: boolean;
+  riskThreshold: number;
+};
+type ReportGroup = {
+  name: string;
+  total: number;
+  block: number;
+  warn: number;
+  allow: number;
+  maxRisk: number;
+};
+type ReportData = {
+  total: number;
+  counts: ReturnType<typeof countVerdicts>;
+  averageRisk: number;
+  critical: number;
+  high: number;
+  repositories: ReportGroup[];
+  sources: ReportGroup[];
+  policies: ReportGroup[];
+  types: ReportGroup[];
+};
 
 const queueTabs: QueueTab[] = ['Risk Queue', 'Dependencies', 'Tool Calls', 'Repos'];
 const panelTabs: PanelTab[] = ['Details', 'Vulnerabilities', 'Provenance', 'Policy'];
+const settingsStorageKey = 'pounce-dashboard-settings';
+const defaultDashboardSettings: DashboardSettings = {
+  defaultWindow: '24h',
+  autoRefresh: true,
+  notifyBlocks: true,
+  compactRows: false,
+  riskThreshold: 70
+};
 
 export function App() {
   const [data, setData] = useState<DashboardData>(() => fallbackDashboardData());
@@ -53,7 +87,7 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<DashboardSettings>(() => loadDashboardSettings());
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [exceptionReason, setExceptionReason] = useState('');
   const [submittingException, setSubmittingException] = useState(false);
@@ -62,10 +96,17 @@ export function App() {
     void refreshDashboard({ initial: true });
   }, []);
 
+  useEffect(() => {
+    if (!settings.autoRefresh) return undefined;
+    const interval = window.setInterval(() => void refreshDashboard(), 30_000);
+    return () => window.clearInterval(interval);
+  }, [settings.autoRefresh]);
+
   const counts = useMemo(() => countVerdicts(data.verdicts), [data.verdicts]);
   const repositories = useMemo(() => ['all', ...new Set(data.verdicts.map((row) => row.repository))], [data.verdicts]);
   const sources = useMemo(() => ['all', ...new Set(data.verdicts.map((row) => row.source))] as Array<'all' | SourceKind>, [data.verdicts]);
   const selected = data.verdicts.find((row) => row.id === selectedId) ?? data.verdicts[0] ?? null;
+  const report = useMemo(() => buildReport(data.verdicts), [data.verdicts]);
 
   const visibleRows = useMemo(() => {
     return data.verdicts
@@ -136,19 +177,47 @@ export function App() {
   function selectQueue(tab: QueueTab, nav: SidebarItem = tab) {
     setActiveNav(nav);
     setActiveTab(tab);
-    setShowSettings(false);
     setShowNotifications(false);
   }
 
   function selectAction(nav: SidebarItem, action: () => void) {
     setActiveNav(nav);
-    setShowSettings(false);
     setShowNotifications(false);
     action();
   }
 
+  async function copyReportSummary() {
+    await navigator.clipboard?.writeText(reportSummary(report, data.status.mode));
+    setToast('Report summary copied');
+  }
+
+  function exportReportCsv() {
+    const csv = toCsv(data.verdicts);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `pounce-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setToast('Report CSV exported');
+  }
+
+  function saveSettings() {
+    persistDashboardSettings(settings);
+    setTimeFilter(settings.defaultWindow);
+    setToast('Settings saved');
+  }
+
+  function resetSettings() {
+    setSettings(defaultDashboardSettings);
+    persistDashboardSettings(defaultDashboardSettings);
+    setTimeFilter(defaultDashboardSettings.defaultWindow);
+    setToast('Settings reset');
+  }
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${settings.compactRows ? 'compact' : ''}`}>
       <aside className="sidebar" aria-label="Main navigation">
         <div className="brand">
           <div className="brand-mark">
@@ -169,11 +238,10 @@ export function App() {
           <NavItem icon={<ShieldCheck size={18} />} label="Policies" active={activeNav === 'Policies'} onClick={() => selectAction('Policies', () => setPanelTab('Policy'))} />
           <NavItem icon={<LockKeyhole size={18} />} label="Exceptions" active={activeNav === 'Exceptions'} onClick={() => selectAction('Exceptions', () => setExceptionOpen(true))} />
           <NavItem icon={<FileText size={18} />} label="Audit Log" active={activeNav === 'Audit Log'} onClick={() => selectAction('Audit Log', () => setToast(`${data.verdicts.length} audit records loaded`))} />
-          <NavItem icon={<LayoutDashboard size={18} />} label="Reports" active={activeNav === 'Reports'} onClick={() => selectAction('Reports', () => setToast(`${counts.block} blocked, ${counts.warn} warnings, ${counts.allow} allowed`))} />
+          <NavItem icon={<LayoutDashboard size={18} />} label="Reports" active={activeNav === 'Reports'} onClick={() => selectAction('Reports', () => undefined)} />
           <NavItem icon={<Settings size={18} />} label="Settings" active={activeNav === 'Settings'} onClick={() => {
             setActiveNav('Settings');
             setShowNotifications(false);
-            setShowSettings((value) => !value);
           }} />
         </nav>
       </aside>
@@ -193,16 +261,29 @@ export function App() {
             <button aria-label="Settings" onClick={() => {
               setActiveNav('Settings');
               setShowNotifications(false);
-              setShowSettings((value) => !value);
             }}><Settings size={20} /></button>
             <button className="avatar" aria-label="Dashboard user">AB</button>
             <ChevronDown size={16} />
           </div>
-          {showNotifications ? <Popover title="Notifications" lines={[`${counts.block} blocked verdicts`, `${counts.warn} warnings need review`, error ? 'API fallback is active' : 'Policy API is reachable']} /> : null}
-          {showSettings ? <Popover title="Runtime" lines={[`Mode: ${data.status.mode}`, `Service: ${data.status.service}`, `Records: ${data.verdicts.length}`]} /> : null}
+          {showNotifications ? <Popover title="Notifications" lines={[settings.notifyBlocks ? `${counts.block} blocked verdicts` : 'Block notifications muted', `${counts.warn} warnings need review`, error ? 'API fallback is active' : 'Policy API is reachable']} /> : null}
         </header>
 
-        <div className="content-grid">
+        <div className={`content-grid ${activeNav === 'Reports' || activeNav === 'Settings' ? 'single-view' : ''}`}>
+          {activeNav === 'Reports' ? (
+            <ReportsView report={report} mode={data.status.mode} rows={data.verdicts} threshold={settings.riskThreshold} onCopySummary={() => void copyReportSummary()} onExportCsv={exportReportCsv} />
+          ) : activeNav === 'Settings' ? (
+            <SettingsView
+              status={data.status}
+              settings={settings}
+              onSettingsChange={setSettings}
+              onRefresh={() => void refreshDashboard()}
+              onSave={saveSettings}
+              onReset={resetSettings}
+              records={data.verdicts.length}
+              refreshing={refreshing}
+            />
+          ) : (
+            <>
           <section className="queue-column" aria-label="Risk queue">
             <div className="tabs">
               {queueTabs.map((tab) => (
@@ -248,6 +329,8 @@ export function App() {
               <strong>No matching verdicts</strong>
               <p>Adjust filters or refresh the dashboard.</p>
             </aside>
+          )}
+            </>
           )}
         </div>
 
@@ -542,6 +625,265 @@ function Popover({ title, lines }: { title: string; lines: string[] }) {
   );
 }
 
+function ReportsView({ report, mode, rows, threshold, onCopySummary, onExportCsv }: { report: ReportData; mode: string; rows: VerdictRow[]; threshold: number; onCopySummary: () => void; onExportCsv: () => void }) {
+  const highRiskRows = rows.filter((row) => row.riskScore >= threshold).slice(0, 6);
+
+  return (
+    <section className="workspace-view" aria-labelledby="reports-title">
+      <div className="view-header">
+        <div>
+          <span className="mini-label">Security reporting</span>
+          <h1 id="reports-title">Reports</h1>
+          <p>Policy verdicts, blocked supply-chain events, and remediation targets from the live dashboard feed.</p>
+        </div>
+        <div className="panel-actions view-actions">
+          <button type="button" onClick={onCopySummary}><FileText size={17} /> Copy summary</button>
+          <button type="button" className="primary" onClick={onExportCsv}><LayoutDashboard size={17} /> Export CSV</button>
+        </div>
+      </div>
+
+      <div className="metric-grid">
+        <MetricCard icon={<ShieldCheck size={20} />} label="Total verdicts" value={report.total} detail={`${mode} runtime`} />
+        <MetricCard icon={<ShieldAlert size={20} />} label="Blocked" value={report.counts.block} detail={`${formatPercent(report.counts.block, report.total)} of feed`} tone="block" />
+        <MetricCard icon={<AlertTriangle size={20} />} label="Warnings" value={report.counts.warn} detail={`${formatPercent(report.counts.warn, report.total)} need review`} tone="warn" />
+        <MetricCard icon={<Activity size={20} />} label="Average risk" value={report.averageRisk} detail={`${report.critical} critical · ${report.high} high`} />
+      </div>
+
+      <section className="report-panel">
+        <div className="section-header">
+          <h2>Verdict distribution</h2>
+          <span className="mini-label">{report.total} records</span>
+        </div>
+        <DistributionBar report={report} />
+        <div className="distribution-legend">
+          <span><i className="block" /> Block {report.counts.block}</span>
+          <span><i className="warn" /> Warn {report.counts.warn}</span>
+          <span><i className="allow" /> Allow {report.counts.allow}</span>
+        </div>
+      </section>
+
+      <div className="report-grid">
+        <section className="report-panel">
+          <div className="section-header">
+            <h2>Top repositories</h2>
+            <span className="mini-label">By verdict volume</span>
+          </div>
+          <GroupSummaryTable rows={report.repositories} emptyLabel="No repository records loaded." />
+        </section>
+
+        <section className="report-panel">
+          <div className="section-header">
+            <h2>Policy outcomes</h2>
+            <span className="mini-label">Blocked and warned rules</span>
+          </div>
+          <GroupSummaryTable rows={report.policies} emptyLabel="No policy records loaded." />
+        </section>
+      </div>
+
+      <div className="report-grid">
+        <section className="report-panel">
+          <div className="section-header">
+            <h2>Source coverage</h2>
+            <span className="mini-label">GitHub, Foundry, Azure</span>
+          </div>
+          <GroupSummaryTable rows={report.sources} emptyLabel="No source records loaded." />
+        </section>
+
+        <section className="report-panel">
+          <div className="section-header">
+            <h2>High-risk watchlist</h2>
+            <span className="mini-label">Risk score {threshold}+</span>
+          </div>
+          {highRiskRows.length === 0 ? <p className="muted">No records are above the configured threshold.</p> : (
+            <div className="analytics-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Verdict</th>
+                    <th>Risk</th>
+                    <th>Repository</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {highRiskRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="item-cell">{row.item}</td>
+                      <td><VerdictPill verdict={row.verdict} /></td>
+                      <td><RiskScore value={row.riskScore} verdict={row.verdict} /></td>
+                      <td>{row.repository}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function SettingsView({ status, settings, onSettingsChange, onRefresh, onSave, onReset, records, refreshing }: { status: DashboardData['status']; settings: DashboardSettings; onSettingsChange: (settings: DashboardSettings) => void; onRefresh: () => void; onSave: () => void; onReset: () => void; records: number; refreshing: boolean }) {
+  const integrations = Object.entries(status.integrations);
+  const feeds = status.feeds.length > 0 ? status.feeds : [{ name: 'policy-api', status: 'unknown', updatedAgo: 'unknown' }];
+
+  return (
+    <section className="workspace-view" aria-labelledby="settings-title">
+      <div className="view-header">
+        <div>
+          <span className="mini-label">Dashboard controls</span>
+          <h1 id="settings-title">Settings</h1>
+          <p>Configure dashboard defaults, live refresh behavior, notification scope, and deployment health visibility.</p>
+        </div>
+        <div className="panel-actions view-actions">
+          <button type="button" onClick={onRefresh} disabled={refreshing}><RefreshCcw size={17} /> {refreshing ? 'Refreshing...' : 'Refresh now'}</button>
+          <button type="button" onClick={onReset}>Reset defaults</button>
+          <button type="button" className="primary" onClick={onSave}><ShieldCheck size={17} /> Save settings</button>
+        </div>
+      </div>
+
+      <div className="settings-grid">
+        <section className="settings-panel runtime-panel">
+          <div className="section-header">
+            <h2>Runtime</h2>
+            <span className="mini-label">{status.status}</span>
+          </div>
+          <dl className="runtime-list">
+            <div><dt>Service</dt><dd>{status.service}</dd></div>
+            <div><dt>Mode</dt><dd>{status.mode}</dd></div>
+            <div><dt>Records</dt><dd>{records}</dd></div>
+            <div><dt>Azure audit</dt><dd>{status.integrations.azureAudit ?? 'not configured'}</dd></div>
+          </dl>
+        </section>
+
+        <section className="settings-panel">
+          <div className="section-header">
+            <h2>Workspace preferences</h2>
+            <span className="mini-label">Saved in this browser</span>
+          </div>
+          <div className="settings-form">
+            <label className="setting-field">
+              <span>Default time window</span>
+              <select aria-label="Default time window" value={settings.defaultWindow} onChange={(event) => onSettingsChange({ ...settings, defaultWindow: event.currentTarget.value })}>
+                {['24h', '7d', 'all'].map((option) => <option key={option} value={option}>{formatOption(option)}</option>)}
+              </select>
+            </label>
+
+            <label className="toggle-row">
+              <input type="checkbox" checked={settings.autoRefresh} onChange={(event) => onSettingsChange({ ...settings, autoRefresh: event.currentTarget.checked })} />
+              <span><strong>Auto refresh</strong><em>Poll the policy API every 30 seconds while this dashboard is open.</em></span>
+            </label>
+
+            <label className="toggle-row">
+              <input type="checkbox" checked={settings.notifyBlocks} onChange={(event) => onSettingsChange({ ...settings, notifyBlocks: event.currentTarget.checked })} />
+              <span><strong>Block notifications</strong><em>Keep blocked verdicts visible in the notification tray.</em></span>
+            </label>
+
+            <label className="toggle-row">
+              <input type="checkbox" checked={settings.compactRows} onChange={(event) => onSettingsChange({ ...settings, compactRows: event.currentTarget.checked })} />
+              <span><strong>Compact queue rows</strong><em>Reduce table height for dense review sessions.</em></span>
+            </label>
+
+            <label className="setting-field">
+              <span>High-risk marker <strong>{settings.riskThreshold}+</strong></span>
+              <input aria-label="High-risk marker" type="range" min="40" max="95" step="5" value={settings.riskThreshold} onChange={(event) => onSettingsChange({ ...settings, riskThreshold: Number(event.currentTarget.value) })} />
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-panel">
+          <div className="section-header">
+            <h2>Integrations</h2>
+            <span className="mini-label">{integrations.length} configured</span>
+          </div>
+          <div className="status-list">
+            {integrations.length === 0 ? <p className="muted">No integrations were returned by the API.</p> : integrations.map(([name, value]) => (
+              <div className="status-row" key={name}>
+                <span><i /> {formatOption(name)}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="settings-panel">
+          <div className="section-header">
+            <h2>Feeds</h2>
+            <span className="mini-label">Policy inputs</span>
+          </div>
+          <div className="status-list">
+            {feeds.map((feed) => (
+              <div className="status-row" key={feed.name}>
+                <span><i /> {feed.name}</span>
+                <strong>{feed.status} · {feed.updatedAgo}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({ icon, label, value, detail, tone }: { icon: React.ReactNode; label: string; value: number | string; detail: string; tone?: VerdictKind }) {
+  return (
+    <div className={`metric-card ${tone ?? ''}`}>
+      <span className="metric-icon">{icon}</span>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{detail}</em>
+      </div>
+    </div>
+  );
+}
+
+function DistributionBar({ report }: { report: ReportData }) {
+  const segments: Array<{ key: VerdictKind; value: number }> = [
+    { key: 'block', value: report.counts.block },
+    { key: 'warn', value: report.counts.warn },
+    { key: 'allow', value: report.counts.allow }
+  ];
+
+  return (
+    <div className="distribution-bar" aria-label="Verdict distribution">
+      {report.total === 0 ? <span className="distribution-empty">No verdicts</span> : segments.map((segment) => (
+        segment.value > 0 ? <span key={segment.key} className={`distribution-segment ${segment.key}`} style={{ width: segmentWidth(segment.value, report.total) }} title={`${segment.key}: ${segment.value}`} /> : null
+      ))}
+    </div>
+  );
+}
+
+function GroupSummaryTable({ rows, emptyLabel }: { rows: ReportGroup[]; emptyLabel: string }) {
+  if (rows.length === 0) return <p className="muted">{emptyLabel}</p>;
+
+  return (
+    <div className="analytics-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Total</th>
+            <th>Blocked</th>
+            <th>Max risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name}>
+              <td className="item-cell">{row.name}</td>
+              <td>{row.total}</td>
+              <td>{row.block}</td>
+              <td><RiskScore value={row.maxRisk} verdict={row.block > 0 ? 'block' : row.warn > 0 ? 'warn' : 'allow'} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function countVerdicts(rows: VerdictRow[]) {
   return rows.reduce((counts, row) => {
     counts[row.verdict] += 1;
@@ -599,6 +941,100 @@ function recommendation(row: VerdictRow): string {
   if (row.verdict === 'block') return row.recommendedVersion ? `Replace with ${row.recommendedVersion} before merging.` : 'Do not allow this dependency or action without an approved exception.';
   if (row.verdict === 'warn') return 'Review the evidence and approve only if the runtime owner accepts the risk.';
   return 'No action required. Keep the audit record for traceability.';
+}
+
+function buildReport(rows: VerdictRow[]): ReportData {
+  const counts = countVerdicts(rows);
+  const totalRisk = rows.reduce((sum, row) => sum + row.riskScore, 0);
+
+  return {
+    total: rows.length,
+    counts,
+    averageRisk: rows.length > 0 ? Math.round(totalRisk / rows.length) : 0,
+    critical: rows.filter((row) => row.riskScore >= 80).length,
+    high: rows.filter((row) => row.riskScore >= 50 && row.riskScore < 80).length,
+    repositories: summarizeGroups(rows, (row) => row.repository),
+    sources: summarizeGroups(rows, (row) => row.source),
+    policies: summarizeGroups(rows, (row) => row.policyId ?? 'policy-api'),
+    types: summarizeGroups(rows, (row) => row.type)
+  };
+}
+
+function summarizeGroups(rows: VerdictRow[], selectName: (row: VerdictRow) => string): ReportGroup[] {
+  const grouped = new Map<string, ReportGroup>();
+
+  for (const row of rows) {
+    const name = selectName(row) || 'unknown';
+    const summary = grouped.get(name) ?? { name, total: 0, block: 0, warn: 0, allow: 0, maxRisk: 0 };
+    summary.total += 1;
+    summary[row.verdict] += 1;
+    summary.maxRisk = Math.max(summary.maxRisk, row.riskScore);
+    grouped.set(name, summary);
+  }
+
+  return [...grouped.values()].sort((a, b) => b.total - a.total || b.maxRisk - a.maxRisk || a.name.localeCompare(b.name)).slice(0, 6);
+}
+
+function reportSummary(report: ReportData, mode: string): string {
+  return [
+    `Pounce Sentinel report (${mode})`,
+    `Verdicts: ${report.total}`,
+    `Blocked: ${report.counts.block}`,
+    `Warnings: ${report.counts.warn}`,
+    `Allowed: ${report.counts.allow}`,
+    `Average risk: ${report.averageRisk}`,
+    `Top repository: ${report.repositories[0]?.name ?? 'none'}`
+  ].join('\n');
+}
+
+function toCsv(rows: VerdictRow[]): string {
+  const header = ['auditId', 'createdAt', 'verdict', 'riskScore', 'type', 'item', 'repository', 'source', 'policyId', 'actor'];
+  const body = rows.map((row) => header.map((field) => csvCell(String(row[field as keyof VerdictRow] ?? ''))).join(','));
+  return [header.join(','), ...body].join('\n');
+}
+
+function csvCell(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function loadDashboardSettings(): DashboardSettings {
+  if (typeof window === 'undefined') return defaultDashboardSettings;
+
+  try {
+    const raw = window.localStorage.getItem(settingsStorageKey);
+    if (!raw) return defaultDashboardSettings;
+    return normalizeSettings(JSON.parse(raw) as Partial<DashboardSettings>);
+  } catch {
+    return defaultDashboardSettings;
+  }
+}
+
+function persistDashboardSettings(settings: DashboardSettings): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(settingsStorageKey, JSON.stringify(normalizeSettings(settings)));
+}
+
+function normalizeSettings(settings: Partial<DashboardSettings>): DashboardSettings {
+  const defaultWindow = settings.defaultWindow === '7d' || settings.defaultWindow === 'all' ? settings.defaultWindow : '24h';
+  const riskThreshold = Number.isFinite(settings.riskThreshold) ? Number(settings.riskThreshold) : defaultDashboardSettings.riskThreshold;
+
+  return {
+    defaultWindow,
+    autoRefresh: typeof settings.autoRefresh === 'boolean' ? settings.autoRefresh : defaultDashboardSettings.autoRefresh,
+    notifyBlocks: typeof settings.notifyBlocks === 'boolean' ? settings.notifyBlocks : defaultDashboardSettings.notifyBlocks,
+    compactRows: typeof settings.compactRows === 'boolean' ? settings.compactRows : defaultDashboardSettings.compactRows,
+    riskThreshold: Math.min(95, Math.max(40, riskThreshold))
+  };
+}
+
+function formatPercent(value: number, total: number): string {
+  if (total === 0) return '0%';
+  return `${Math.round((value / total) * 100)}%`;
+}
+
+function segmentWidth(value: number, total: number): string {
+  if (total === 0 || value === 0) return '0%';
+  return `${Math.max(3, Math.round((value / total) * 100))}%`;
 }
 
 function slug(value: string): string {

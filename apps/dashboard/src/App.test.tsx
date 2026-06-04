@@ -93,6 +93,7 @@ describe('Pounce Sentinel dashboard', () => {
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -138,6 +139,45 @@ describe('Pounce Sentinel dashboard', () => {
     expect(await screen.findByText('Exception requested for event-stream@3.3.7')).toBeInTheDocument();
   });
 
+  it('renders reports as a full dashboard workspace', async () => {
+    const { container } = render(<App />);
+
+    await screen.findByText('Policy API healthy');
+    clickSidebar(container, 'Reports');
+
+    expect(activeSidebarLabel(container)).toBe('Reports');
+    expect(screen.getByRole('heading', { name: 'Reports' })).toBeInTheDocument();
+    expect(screen.getByText('Verdict distribution')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy summary' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
+    expect(screen.getByText('org/web')).toBeInTheDocument();
+  });
+
+  it('persists settings and applies dashboard defaults', async () => {
+    const { container } = render(<App />);
+
+    await screen.findByText('Policy API healthy');
+    clickSidebar(container, 'Settings');
+
+    expect(activeSidebarLabel(container)).toBe('Settings');
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Default time window'), { target: { value: '7d' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /Compact queue rows/ }));
+    fireEvent.change(screen.getByLabelText('High-risk marker'), { target: { value: '85' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(await screen.findByText('Settings saved')).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem('pounce-dashboard-settings') ?? '{}')).toMatchObject({
+      defaultWindow: '7d',
+      compactRows: true,
+      riskThreshold: 85
+    });
+    expect(container.querySelector('.app-shell.compact')).toBeInTheDocument();
+
+    clickSidebar(container, 'Risk Queue');
+    expect(screen.getByLabelText('Window')).toHaveValue('7d');
+  });
+
   it('keeps sidebar active state exclusive across options', async () => {
     const { container } = render(<App />);
 
@@ -151,8 +191,8 @@ describe('Pounce Sentinel dashboard', () => {
       if (label === 'Exceptions') {
         fireEvent.click(screen.getByLabelText('Close exception dialog'));
       }
-      if (label === 'Audit Log' || label === 'Reports') {
-        fireEvent.click(screen.getByRole('button', { name: /audit records loaded|blocked/ }));
+      if (label === 'Audit Log') {
+        fireEvent.click(screen.getByRole('button', { name: /audit records loaded/ }));
       }
     }
   });
