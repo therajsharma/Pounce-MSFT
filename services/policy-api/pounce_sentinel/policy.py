@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pounce_sentinel.intel import find_seeded_record
+from pounce_sentinel.trace import trace_metadata
 
 FLOATING_PREFIXES = ("^", "~", ">", "<", "*")
 SAFE_BASELINE = {
@@ -21,6 +22,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
     source = str(payload.get("source", "local")).strip()
     repository = str(payload.get("repository", "unknown/repo")).strip()
     actor = str(payload.get("actor", "unknown-actor")).strip()
+    trace = trace_metadata(payload)
     now = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     validation_error = _validation_error(ecosystem, package_name, version)
@@ -44,6 +46,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             ],
             recommended_version=None,
+            trace=trace,
             created_at=now,
         )
 
@@ -68,6 +71,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             ],
             recommended_version=seeded.recommended_version,
+            trace=trace,
             created_at=now,
         )
 
@@ -91,6 +95,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             ],
             recommended_version=_recommended_exact_version(ecosystem, package_name),
+            trace=trace,
             created_at=now,
         )
 
@@ -120,6 +125,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
             }
         ],
         recommended_version=version,
+        trace=trace,
         created_at=now,
     )
 
@@ -169,10 +175,11 @@ def _build_verdict(
     reasons: list[str],
     evidence: list[dict[str, str]],
     recommended_version: str | None,
+    trace: dict[str, str],
     created_at: str,
 ) -> dict[str, Any]:
     audit_id = _audit_id(ecosystem, package_name, version, source, repository, actor, policy_id)
-    return {
+    verdict_payload = {
         "statusCode": 200,
         "auditId": audit_id,
         "verdict": verdict,
@@ -189,10 +196,11 @@ def _build_verdict(
         "policyId": policy_id,
         "createdAt": created_at,
     }
+    verdict_payload.update(trace)
+    return verdict_payload
 
 
 def _audit_id(*parts: str) -> str:
     joined = "|".join(parts)
     digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
     return f"ps-{digest}"
-

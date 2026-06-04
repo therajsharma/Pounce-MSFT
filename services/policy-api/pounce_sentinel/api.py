@@ -11,6 +11,7 @@ from pounce_sentinel.storage import (
     list_recent_verdicts,
     storage_backend,
 )
+from pounce_sentinel.trace import trace_metadata
 
 
 def service_status() -> dict[str, Any]:
@@ -20,7 +21,7 @@ def service_status() -> dict[str, Any]:
         "status": "healthy",
         "mode": "azure-ready" if backend == "cosmos" else "local-seeded",
         "integrations": {
-            "foundry": "configured-by-openapi",
+            "foundry": "agent-and-openapi-ready",
             "github": "action-ready",
             "teams": "bot-ready",
             "azureAudit": backend,
@@ -71,6 +72,54 @@ def list_verdicts() -> dict[str, Any]:
     return {"statusCode": 200, "count": len(verdicts), "verdicts": verdicts}
 
 
+def explain_verdict(audit_id: str) -> dict[str, Any]:
+    normalized_audit_id = str(audit_id).strip()
+    if not normalized_audit_id:
+        return {"statusCode": 400, "error": "auditId is required"}
+
+    verdict = next(
+        (
+            item
+            for item in reversed(list_recent_verdicts(limit=100))
+            if item.get("auditId") == normalized_audit_id
+        ),
+        None,
+    )
+    if verdict is None:
+        return {
+            "statusCode": 404,
+            "auditId": normalized_audit_id,
+            "error": "verdict not found",
+        }
+
+    package = f"{verdict.get('packageName', 'unknown')}@{verdict.get('version', 'unknown')}"
+    decision = str(verdict.get("verdict", "unknown")).upper()
+    reasons = [str(reason) for reason in verdict.get("reasons", [])]
+    recommended_version = verdict.get("recommendedVersion")
+    remediation = (
+        f"Use {recommended_version} or request a time-bound exception."
+        if recommended_version and recommended_version != verdict.get("version")
+        else "No package change is required; keep the audit record for traceability."
+    )
+    if verdict.get("verdict") == "block" and not recommended_version:
+        remediation = "Do not install this release. Choose a trusted replacement or request an exception."
+
+    explanation = {
+        "statusCode": 200,
+        "auditId": normalized_audit_id,
+        "summary": f"{decision}: {package} in {verdict.get('repository', 'unknown/repo')}",
+        "verdict": verdict.get("verdict"),
+        "riskScore": verdict.get("riskScore"),
+        "policyId": verdict.get("policyId"),
+        "reasons": reasons,
+        "evidence": verdict.get("evidence", []),
+        "remediation": remediation,
+        "createdAt": verdict.get("createdAt"),
+    }
+    explanation.update(trace_metadata(verdict))
+    return explanation
+
+
 def create_exception(payload: dict[str, Any]) -> dict[str, Any]:
     audit_id = str(payload.get("auditId", "")).strip()
     reason = str(payload.get("reason", "")).strip()
@@ -92,5 +141,6 @@ def create_exception(payload: dict[str, Any]) -> dict[str, Any]:
         "reason": reason,
         "requestedAt": requested_at,
     }
+    exception.update(trace_metadata(payload))
     append_exception(exception)
     return exception

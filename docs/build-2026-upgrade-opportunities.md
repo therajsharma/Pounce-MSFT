@@ -12,7 +12,7 @@ Pounce Sentinel is currently a local-first Microsoft-native scaffold:
 - React dashboard for security operations.
 - TypeScript GitHub Action for dependency PR gating.
 - TypeScript Teams command bot.
-- Foundry OpenAPI tool spec for `vet_dependency`.
+- Foundry OpenAPI, Toolbox package, and Agent Framework wrapper for policy tools.
 - Bicep for Azure Functions, Cosmos DB, Key Vault, App Insights, and Static Web Apps.
 
 The strongest product direction remains: every AI developer agent should call Pounce before adding a dependency or performing a sensitive tool action, and Pounce should return a governed `allow`, `warn`, or `block` verdict with evidence and auditability.
@@ -55,17 +55,16 @@ Sources:
 
 Priority: P0
 
-Current state: `integrations/foundry/openapi.yaml` exposes `vet_dependency` as a custom OpenAPI tool that calls the Azure Functions API.
+Current state: `integrations/foundry/openapi.yaml` exposes `vet_dependency`, `scan_manifest`, `explain_verdict`, and `request_exception` as custom OpenAPI tools that call the Azure Functions API. `integrations/foundry/toolbox/` packages those tools for Toolbox import, and `integrations/foundry/agent/` contains the Agent Framework hosted-agent wrapper.
 
 Build 2026 fit: Foundry now has a clearer production agent platform: Microsoft Agent Framework stable building blocks, hosted agents, Toolboxes, memory, and publishing. Pounce should keep the Python policy API as the source of truth, but add a Foundry agent wrapper that turns the raw API into an agent-native control point.
 
 Implementation:
 
-- Add `integrations/foundry/agent/` with a Python Microsoft Agent Framework harness.
-- Wrap `vet_dependency`, `scan_manifest`, `explain_verdict`, and `request_exception` as skills/tools.
 - Keep the Azure Functions API as the canonical policy engine.
-- Put Pounce tools into a Foundry Toolbox when tenant access allows it.
-- Use Foundry hosted agents when GA is available in the tenant.
+- Import `integrations/foundry/toolbox/pounce-sentinel-toolbox.json` into the real Foundry project when tenant access allows it.
+- Deploy the hosted Agent Framework wrapper from `integrations/foundry/agent/`.
+- Validate trace propagation from a real Foundry tool call into the persisted Pounce verdict.
 
 Outcome: demo flow changes from "import this OpenAPI spec" to "publish a governed Pounce policy agent that other agents call before risky actions."
 
@@ -149,9 +148,9 @@ Implementation:
 
 - Add OpenTelemetry instrumentation to the Python API.
 - Emit spans for `vet_dependency`, seeded intel lookup, Cosmos write, exception request, and manifest scan.
-- Include `traceId` and `spanId` in verdict responses.
+- Generate OpenTelemetry spans and carry span IDs in verdict responses.
 - Add dashboard linking/filtering by `traceId`.
-- When using Foundry hosted agents, map Foundry trace IDs into Pounce verdicts.
+- Keep mapping Foundry trace IDs into Pounce verdicts and add dashboard trace links.
 
 Outcome: security reviewers can investigate a blocked install from Teams or dashboard back to the exact agent trace.
 
@@ -228,4 +227,3 @@ Outcome: Pounce becomes the repo-level guardrail for both human and agent depend
 4. Add Cosmos Emulator tests for `cosmos_storage.py`.
 5. Add a first ACS-style control file and an ASSERT-ready eval scenario directory.
 6. Create a minimal Foundry Agent Framework wrapper around the existing API.
-

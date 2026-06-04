@@ -12,7 +12,7 @@ This repository is prepared as a local-first hackathon prototype:
 - React dashboard for the operational security console.
 - TypeScript GitHub Action scaffold for PR dependency gating.
 - TypeScript Teams bot command scaffold.
-- Foundry OpenAPI tool spec for `vet_dependency`.
+- Foundry OpenAPI, Toolbox, and Agent Framework surfaces for policy tools.
 - Bicep templates and docs for later Azure setup.
 
 No real tenant IDs, subscription IDs, secrets, or Microsoft account values are committed.
@@ -24,7 +24,7 @@ apps/
   dashboard/      React + Vite security console
   teams-bot/      Teams command surface scaffold
 integrations/
-  foundry/        OpenAPI spec for Foundry Agent Service
+  foundry/        OpenAPI, Toolbox package, and Agent Framework wrapper
 infra/
   bicep/          Azure resource templates and parameter placeholders
 packages/
@@ -59,6 +59,7 @@ The planned public API is stable for the Microsoft integrations:
 - `POST /api/v1/vet-dependency`
 - `POST /api/v1/scan-manifest`
 - `GET /api/v1/verdicts`
+- `GET /api/v1/verdicts/{auditId}/explain`
 - `GET /api/v1/status`
 - `POST /api/v1/exceptions`
 
@@ -90,8 +91,14 @@ Use [docs/microsoft-account-setup.md](docs/microsoft-account-setup.md) once the 
 - Azure subscription and tenant values go into Bicep parameters or GitHub secrets.
 - API keys and bot credentials go into Key Vault or GitHub Actions secrets.
 - Foundry imports `integrations/foundry/openapi.yaml`.
+- Foundry Toolbox can import `integrations/foundry/toolbox/pounce-sentinel-toolbox.json`.
+- The hosted Agent Framework wrapper starts from `integrations/foundry/agent/`.
 - Teams bot app registration values stay outside the repo.
 
 ## Dashboard concept
 
 The accepted dashboard direction is checked into [docs/assets/pounce-sentinel-dashboard-concept.png](docs/assets/pounce-sentinel-dashboard-concept.png). It is the visual reference for the React app: a light operational security console with a risk queue, verdict detail panel, integration status, recent tool-call timeline, and feed freshness.
+
+## Implementation status
+
+See [docs/implementation-status.md](docs/implementation-status.md) for the current comparison against the original Microsoft-stack plan, including completed capabilities, working surfaces, scaffolded areas, and planned work that is not implemented yet.

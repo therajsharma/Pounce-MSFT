@@ -5,11 +5,13 @@ from typing import Any, Callable
 
 from pounce_sentinel.api import (
     create_exception,
+    explain_verdict,
     list_verdicts,
     scan_manifest,
     service_status,
     vet_dependency,
 )
+from pounce_sentinel.trace import merge_trace_context
 
 try:
     import azure.functions as func
@@ -25,6 +27,11 @@ def _read_json(req: Any) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _request_payload(req: Any) -> dict[str, Any]:
+    headers = getattr(req, "headers", {}) or {}
+    return merge_trace_context(_read_json(req), headers)
+
+
 def _response(payload: dict[str, Any], status_code: int = 200) -> Any:
     if func is None:
         return payload
@@ -37,7 +44,7 @@ def _response(payload: dict[str, Any], status_code: int = 200) -> Any:
 
 def _route(handler: Callable[[dict[str, Any]], dict[str, Any]]) -> Callable[[Any], Any]:
     def wrapped(req: Any) -> Any:
-        result = handler(_read_json(req))
+        result = handler(_request_payload(req))
         return _response(result, int(result.get("statusCode", 200)))
 
     return wrapped
@@ -62,9 +69,14 @@ if func is not None:
     def verdicts(req: func.HttpRequest) -> func.HttpResponse:
         return _response(list_verdicts())
 
+    @app.route(route="v1/verdicts/{audit_id}/explain", methods=["GET"])
+    def explain(req: func.HttpRequest) -> func.HttpResponse:
+        audit_id = req.route_params.get("audit_id", "")
+        result = explain_verdict(audit_id)
+        return _response(result, int(result.get("statusCode", 200)))
+
     @app.route(route="v1/exceptions", methods=["POST"])
     def exceptions(req: func.HttpRequest) -> func.HttpResponse:
         return _route(create_exception)(req)
 else:
     app = None
-
