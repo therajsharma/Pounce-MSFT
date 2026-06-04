@@ -31,7 +31,16 @@ For the dedicated Foundry policy-agent walkthrough, use [docs/foundry-policy-age
    "$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py vet npm event-stream 3.3.7
    ```
 
-5. Open the dashboard:
+5. Optionally refresh public feed state:
+
+   ```bash
+   "$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py sync-feeds
+   "$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py status
+   ```
+
+   The status response should show the selected feed source, trust state, active item count, and any stale or refresh-failure warnings.
+
+6. Open the dashboard:
 
    ```bash
    pnpm install
@@ -42,6 +51,7 @@ For the dedicated Foundry policy-agent walkthrough, use [docs/foundry-policy-age
 
 1. Deploy Azure resources with `scripts/deploy-azure.sh`.
 2. Import `integrations/foundry/openapi.yaml` into Foundry or attach `integrations/foundry/toolbox/pounce-sentinel-toolbox.json`.
-3. Enable the GitHub Action workflow.
-4. Configure the Teams bot.
-5. Repeat the safe, warn, and block dependency cases through each surface.
+3. Trigger `POST /api/v1/feeds/sync` with the Function key, or wait for the 15-minute timer-trigger sync.
+4. Enable the GitHub Action workflow.
+5. Configure the Teams bot.
+6. Repeat the safe, warn, and block dependency cases through each surface.

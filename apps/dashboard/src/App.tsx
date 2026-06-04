@@ -634,6 +634,10 @@ function FeedHealth({ feeds }: { feeds: ServiceFeed[] }) {
       <strong>{feed.name}</strong>
       <span><i /> {feed.status}</span>
       <em>Updated {feed.updatedAgo} ago</em>
+      {feed.trustState ? <em>{formatOption(feed.trustState)} · {feed.activeItemCount ?? 0} items</em> : null}
+      {feed.warnings?.slice(0, 1).map((warning) => (
+        <em className="feed-warning" key={`${feed.name}-${warning.code ?? warning.detail}`}>{warning.detail ?? warning.code}</em>
+      ))}
     </div>
   ));
 }
@@ -842,7 +846,10 @@ function SettingsView({ status, settings, onSettingsChange, onRefresh, onSave, o
             {feeds.map((feed) => (
               <div className="status-row" key={feed.name}>
                 <span><i /> {feed.name}</span>
-                <strong>{feed.status} · {feed.updatedAgo}</strong>
+                <strong>{feed.status} · {feed.updatedAgo} · {feed.selectedFrom ?? 'unknown'}</strong>
+                {feed.warnings?.slice(0, 1).map((warning) => (
+                  <em className="feed-warning" key={`${feed.name}-${warning.code ?? warning.detail}`}>{warning.detail ?? warning.code}</em>
+                ))}
               </div>
             ))}
           </div>

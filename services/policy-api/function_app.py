@@ -9,6 +9,7 @@ from pounce_sentinel.api import (
     list_verdicts,
     scan_manifest,
     service_status,
+    sync_feeds,
     vet_dependency,
 )
 from pounce_sentinel.trace import merge_trace_context
@@ -78,5 +79,13 @@ if func is not None:
     @app.route(route="v1/exceptions", methods=["POST"])
     def exceptions(req: func.HttpRequest) -> func.HttpResponse:
         return _route(create_exception)(req)
+
+    @app.route(route="v1/feeds/sync", methods=["POST"])
+    def feed_sync(req: func.HttpRequest) -> func.HttpResponse:
+        return _route(sync_feeds)(req)
+
+    @app.schedule(schedule="0 */15 * * * *", arg_name="timer", run_on_startup=False, use_monitor=True)
+    def feed_sync_timer(timer: func.TimerRequest) -> None:
+        sync_feeds({"source": "timer", "timerPastDue": str(getattr(timer, "past_due", False)).lower()})
 else:
     app = None

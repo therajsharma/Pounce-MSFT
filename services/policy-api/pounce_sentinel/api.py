@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from pounce_sentinel.feed_sync import sync_public_intelligence
+from pounce_sentinel.feeds import feed_status_rows, runtime_feed
 from pounce_sentinel.manifests import scan_dependencies
 from pounce_sentinel.policy import vet_package
 from pounce_sentinel.storage import (
@@ -16,9 +18,17 @@ from pounce_sentinel.trace import trace_metadata
 
 def service_status() -> dict[str, Any]:
     backend = storage_backend()
+    feed_context = runtime_feed()
+    feeds = feed_status_rows(feed_context)
+    feed_warnings = [
+        warning
+        for feed in feeds
+        for warning in feed.get("warnings", [])
+        if isinstance(feed, dict) and isinstance(feed.get("warnings"), list)
+    ]
     return {
         "service": "pounce-sentinel-policy-api",
-        "status": "healthy",
+        "status": "degraded" if feed_warnings else "healthy",
         "mode": "azure-ready" if backend == "cosmos" else "local-seeded",
         "integrations": {
             "foundry": "agent-and-openapi-ready",
@@ -26,11 +36,7 @@ def service_status() -> dict[str, Any]:
             "teams": "bot-ready",
             "azureAudit": backend,
         },
-        "feeds": [
-            {"name": "seeded-malware-intel", "status": "fresh", "updatedAgo": "1 min"},
-            {"name": "security-advisories", "status": "fresh", "updatedAgo": "3 min"},
-            {"name": "sbom-policy", "status": "fresh", "updatedAgo": "2 min"},
-        ],
+        "feeds": feeds,
     }
 
 
@@ -70,6 +76,24 @@ def scan_manifest(payload: dict[str, Any]) -> dict[str, Any]:
 def list_verdicts() -> dict[str, Any]:
     verdicts = list_recent_verdicts()
     return {"statusCode": 200, "count": len(verdicts), "verdicts": verdicts}
+
+
+def sync_feeds(_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        feed = sync_public_intelligence()
+    except Exception as exc:
+        return {
+            "statusCode": 503,
+            "status": "failed",
+            "error": str(exc),
+        }
+    return {
+        "statusCode": 202,
+        "status": "synced",
+        "itemCount": len(feed.get("items", [])) if isinstance(feed.get("items"), list) else 0,
+        "generatedAt": feed.get("generated_at"),
+        "sources": feed.get("sources", []),
+    }
 
 
 def explain_verdict(audit_id: str) -> dict[str, Any]:

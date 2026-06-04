@@ -13,8 +13,16 @@ const statusPayload = {
     azureAudit: 'cosmos'
   },
   feeds: [
-    { name: 'seeded-malware-intel', status: 'fresh', updatedAgo: '1 min' },
-    { name: 'security-advisories', status: 'fresh', updatedAgo: '3 min' }
+    { name: 'seeded-malware-intel', status: 'fresh', updatedAgo: '1 min', selectedFrom: 'seed', trustState: 'bundled_seed', activeItemCount: 5 },
+    {
+      name: 'security-advisories',
+      status: 'degraded',
+      updatedAgo: '3 min',
+      selectedFrom: 'local_sync_cache',
+      trustState: 'local_sync_cache',
+      activeItemCount: 12,
+      warnings: [{ code: 'feed_stale', detail: 'Threat intelligence feed is stale.' }]
+    }
   ]
 };
 
@@ -102,6 +110,7 @@ describe('Pounce Sentinel dashboard', () => {
     render(<App />);
 
     expect(await screen.findByText('Policy API healthy')).toBeInTheDocument();
+    expect(screen.getByText('Threat intelligence feed is stale.')).toBeInTheDocument();
     expect(screen.getAllByText('event-stream@3.3.7')).toHaveLength(2);
     expect(screen.getByText('lodash@^4.17.21')).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith('/api/v1/status', expect.any(Object));

@@ -6,6 +6,8 @@ from typing import Any
 DATABASE_NAME = "pounce"
 VERDICTS_CONTAINER = "verdicts"
 EXCEPTIONS_CONTAINER = "exceptions"
+FEED_STATE_CONTAINER = "feed_state"
+FEED_STATE_ID = "feed-state-current"
 
 
 def is_configured() -> bool:
@@ -30,6 +32,25 @@ def list_recent_verdicts(limit: int = 50) -> list[dict[str, Any]]:
 def append_exception(exception: dict[str, Any]) -> None:
     item = _cosmos_item(exception)
     _container(_exceptions_container_name()).upsert_item(item)
+
+
+def read_feed_state() -> dict[str, Any] | None:
+    try:
+        item = _container(_feed_state_container_name()).read_item(
+            item=FEED_STATE_ID,
+            partition_key="feed-state",
+        )
+    except Exception:
+        return None
+    state = _strip_cosmos_metadata(item)
+    return state if isinstance(state, dict) else None
+
+
+def write_feed_state(state: dict[str, Any]) -> None:
+    item = dict(state)
+    item["id"] = FEED_STATE_ID
+    item["kind"] = "feed-state"
+    _container(_feed_state_container_name()).upsert_item(item)
 
 
 def _cosmos_item(payload: dict[str, Any]) -> dict[str, Any]:
@@ -69,6 +90,10 @@ def _verdicts_container_name() -> str:
 
 def _exceptions_container_name() -> str:
     return os.getenv("AZURE_COSMOS_EXCEPTIONS_CONTAINER", EXCEPTIONS_CONTAINER)
+
+
+def _feed_state_container_name() -> str:
+    return os.getenv("AZURE_COSMOS_FEED_STATE_CONTAINER", FEED_STATE_CONTAINER)
 
 
 def _strip_cosmos_metadata(item: dict[str, Any]) -> dict[str, Any]:

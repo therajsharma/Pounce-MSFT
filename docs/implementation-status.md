@@ -18,9 +18,9 @@ The original plan was to adapt Pounce from a Codex-native dependency security la
 
 ## Executive Summary
 
-Pounce Sentinel is no longer only a concept. The repository now has a working local-first and Azure-ready prototype with a Python policy API, seeded dependency intelligence, manifest scanning, local and Cosmos-backed audit storage, an Azure Functions entrypoint, a React dashboard, Static Web Apps proxy functions, Bicep infrastructure, GitHub Actions workflows, a Foundry OpenAPI tool spec, and a basic Teams command bot.
+Pounce Sentinel is no longer only a concept. The repository now has a working local-first and Azure-ready prototype with a Python policy API, seeded dependency intelligence, normalized real-feed support, manifest scanning, local and Cosmos-backed audit/feed-state storage, an Azure Functions entrypoint, a React dashboard, Static Web Apps proxy functions, Bicep infrastructure, GitHub Actions workflows, a Foundry OpenAPI tool spec, and a basic Teams command bot.
 
-The most complete pieces are the policy API, deterministic demo scenarios, dashboard UI, Azure infrastructure templates, dashboard deployment path, and Cosmos storage adapter. The partially complete pieces are the GitHub PR gate, Foundry integration, Teams approval workflow, production observability, and richer agent identity model. The largest not-yet-implemented areas are native Foundry agent/Toolbox packaging, Microsoft 365 Copilot publishing, Agent 365 identity metadata, OpenTelemetry traces, ACS/ASSERT policy checkpoints, broad manifest diff scanning, real threat-intelligence feeds, and production-grade exception approval.
+The most complete pieces are the policy API, deterministic demo scenarios, dashboard UI, Azure infrastructure templates, dashboard deployment path, Cosmos storage adapter, and first-pass real advisory/malware/provenance feed path. The partially complete pieces are the GitHub PR gate, Foundry integration, Teams approval workflow, production observability, richer agent identity model, and production feed hardening. The largest not-yet-implemented areas are native Foundry tenant validation, Microsoft 365 Copilot publishing, Agent 365 identity metadata, OpenTelemetry traces, ACS/ASSERT policy checkpoints, broad manifest diff scanning, full SBOM parser ingestion, and production-grade exception approval.
 
 ## What Is Done
 
@@ -32,7 +32,8 @@ The most complete pieces are the policy API, deterministic demo scenarios, dashb
 | Manifest scanning | Working for `package.json` and pinned `requirements.txt` | `services/policy-api/pounce_sentinel/manifests.py` |
 | Local audit log | Working | `services/policy-api/pounce_sentinel/storage.py` writes JSONL to `.pounce-sentinel/verdicts.jsonl` |
 | Cosmos audit adapter | Implemented and config-gated | `services/policy-api/pounce_sentinel/cosmos_storage.py` |
-| Azure Functions HTTP routes | Implemented | `/api/v1/status`, `/api/v1/vet-dependency`, `/api/v1/scan-manifest`, `/api/v1/verdicts`, `/api/v1/exceptions` |
+| Security feeds | First-pass real feed support | `services/policy-api/pounce_sentinel/feeds.py`, `feed_ingestion.py`, `feed_sync.py`, `registry.py` |
+| Azure Functions HTTP routes | Implemented | `/api/v1/status`, `/api/v1/vet-dependency`, `/api/v1/scan-manifest`, `/api/v1/verdicts`, `/api/v1/exceptions`, `/api/v1/feeds/sync` |
 | React dashboard | Working with live API plus fallback demo data | `apps/dashboard/src/App.tsx`, `apps/dashboard/src/api.ts` |
 | Dashboard managed API proxy | Implemented | `apps/dashboard/api/src/functions/pounce.js` |
 | Azure Bicep infrastructure | Implemented | `infra/bicep/main.bicep`, `infra/bicep/parameters.dev.json` |
@@ -55,6 +56,8 @@ The policy API can vet npm and PyPI dependencies and return a governed verdict:
 - `allow` for safe exact versions such as `lodash@4.17.21`.
 - `warn` for floating versions such as `^4.17.0`.
 - `warn` for seeded caution cases such as `minimist@1.2.8` and `axios@1.8.2`.
+- `warn` or `block` for normalized advisory, malware, or SBOM policy feed matches when a hosted or synced feed is available.
+- `warn` for npm registry provenance gaps when registry provenance checks are enabled.
 - `block` for seeded high-risk cases such as `event-stream@3.3.7`, `left-pad@1.3.0`, and `ctx==0.1.2`.
 - `block` for invalid requests, unsupported ecosystems, missing versions, or malformed package names.
 
@@ -91,16 +94,17 @@ Current limitation: lockfiles, Poetry, uv, pnpm lockfile details, npm lockfile d
 
 ### 3. Audit Storage
 
-Two audit backends exist:
+Two audit and feed-state backends exist:
 
 - Local JSONL storage through `.pounce-sentinel/verdicts.jsonl`.
-- Cosmos DB storage when `AZURE_COSMOS_CONNECTION_STRING` is configured.
+- Local feed-state storage through `.pounce-sentinel/feed-state.json`.
+- Cosmos DB storage when `AZURE_COSMOS_CONNECTION_STRING` is configured, including the `feed_state` container.
 
 The local mode is suitable for demos and tests. The Cosmos adapter is implemented for Azure mode and writes verdicts/exceptions into configured containers. Production validation should include Cosmos emulator or live Cosmos integration tests before claiming the storage layer is fully hardened.
 
 ### 4. Service Status and Integration Health
 
-`GET /api/v1/status` returns service health, storage mode, integration readiness labels, and demo feed freshness. The dashboard uses this to show whether it is running against live policy data or fallback demo data.
+`GET /api/v1/status` returns service health, storage mode, integration readiness labels, selected feed source, trust state, active item count, freshness, and feed warnings. The dashboard uses this to show whether it is running against live policy data or fallback demo data.
 
 ### 5. Dashboard
 
@@ -129,7 +133,7 @@ Bicep covers:
 - Azure Functions app and plan, gated by `deployFunctionApp`.
 - Cosmos DB serverless account.
 - Cosmos database `pounce`.
-- Cosmos containers `verdicts` and `exceptions`.
+- Cosmos containers `verdicts`, `exceptions`, and `feed_state`.
 - Key Vault.
 - Key Vault role assignment for the Function App identity.
 - Static Web App, gated by `deployStaticWebApp`.
@@ -195,7 +199,7 @@ pnpm -r build
 | Durable audit storage | Cosmos adapter and Bicep containers exist | Add Cosmos emulator/live integration tests, query tuning, retention policy, and dashboard query indexes |
 | Exception workflow | API accepts exception requests and stores records | Approval policy, reviewer identity, expiry, enforcement, notification, audit status transitions |
 | Tool-action policy | Dashboard demo data includes tool-call rows | Real API policy currently focuses on dependencies; implement sensitive tool-action preflight contract |
-| Security feeds | Seeded intel fixtures exist | Replace or supplement fixtures with real advisory, malware, provenance, and SBOM feeds |
+| Security feeds | Normalized hosted/local feeds, GitHub malware advisory sync, OSV malware sync, npm provenance warnings, feed-state persistence, stale/failure warnings, and normalized SBOM policy items exist | Add full CycloneDX/SPDX ingestion, signed feed verification, live Azure validation, and production alert routing |
 | Observability | App Insights resource exists | Add OpenTelemetry spans, trace IDs, structured telemetry, dashboard trace links |
 
 ## Planned but Not Yet Implemented
@@ -255,20 +259,28 @@ Not yet implemented:
 - Poetry/uv/pip-tools lockfile support.
 - Diff-aware scanning of all changed manifests in a PR.
 - Transitive dependency reasoning.
-- Package provenance and maintainer reputation checks.
+- Maintainer reputation checks.
+- PyPI provenance or attestations where reliable upstream metadata becomes available.
 
 ### 6. Real Threat Intelligence and Provenance Feeds
 
-Not yet implemented:
+First pass implemented:
 
 - Real advisory feed ingestion.
 - Malware package feed ingestion.
-- SBOM policy feed.
-- Package registry provenance checks.
+- Normalized SBOM policy feed items.
+- npm package registry provenance checks.
 - Feed freshness persistence.
-- Feed failure behavior and alerts.
+- Feed failure behavior and dashboard/API warnings.
+- Manual authenticated Azure Functions sync endpoint.
+- 15-minute Azure timer-trigger sync cadence for demo use.
 
-The current seeded fixtures are useful for deterministic demos, but they are not a production intelligence source.
+Remaining production work:
+
+- Full CycloneDX/SPDX SBOM parsing.
+- Signed feed verification.
+- Production alert delivery to Teams/GitHub/App Insights.
+- Live Azure validation of the timer trigger and `feed_state` container.
 
 ### 7. Strong API Authentication and Authorization Model
 
@@ -319,10 +331,10 @@ Still needed for a polished hackathon demo:
 5. Implement real exception POST behavior from the Teams bot and dashboard approval flow.
 6. Import the Foundry Toolbox package into a real Foundry project and deploy the hosted agent.
 7. Add first ACS-style control files and ASSERT-ready eval scenarios.
-8. Replace seeded-only intelligence with one real advisory/provenance feed path.
+8. Harden the first-pass feed implementation with signed feed verification and production alert routing.
 
 ## Current Capability Statement
 
-Pounce Sentinel currently works as a Microsoft-native hackathon prototype for dependency preflight control. It can produce repeatable allow, warn, and block verdicts, record audits locally or in Cosmos when configured, expose Azure Functions endpoints, display a functional operations dashboard, and provide concrete integration surfaces for GitHub, Foundry, Azure, and Teams.
+Pounce Sentinel currently works as a Microsoft-native hackathon prototype for dependency preflight control. It can produce repeatable allow, warn, and block verdicts, evaluate normalized real intelligence feeds when configured, warn on npm provenance gaps when enabled, record audits and feed state locally or in Cosmos, expose Azure Functions endpoints, display a functional operations dashboard, and provide concrete integration surfaces for GitHub, Foundry, Azure, and Teams.
 
-It is not yet a finished production agent-governance platform. The next phase should validate the current Foundry hosted-agent/Toolbox artifacts in a real tenant, then finish the full GitHub diff gate, Teams/Copilot approvals, traceable agent identity, real intelligence feeds, and production observability.
+It is not yet a finished production agent-governance platform. The next phase should validate the current Foundry hosted-agent/Toolbox artifacts in a real tenant, then finish the full GitHub diff gate, Teams/Copilot approvals, traceable agent identity, signed/alerted intelligence feeds, and production observability.

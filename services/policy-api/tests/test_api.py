@@ -5,15 +5,31 @@ from pounce_sentinel.api import (
     explain_verdict,
     scan_manifest,
     service_status,
+    sync_feeds,
     vet_dependency,
 )
+from pounce_sentinel.feeds import IntelUnavailable
 
 
-def test_status_reports_local_seeded_mode() -> None:
+def test_status_reports_local_seeded_mode(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
     result = service_status()
 
     assert result["status"] == "healthy"
     assert result["integrations"]["github"] == "action-ready"
+    assert result["feeds"][0]["selectedFrom"] == "seed"
+    assert result["feeds"][0]["trustState"] == "bundled_seed"
+
+
+def test_status_reports_feed_warning_as_degraded(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_IOC_FEED_URL", "https://feed.example/intel.json")
+    monkeypatch.setattr("pounce_sentinel.feeds.load_remote_feed", lambda _url: (_ for _ in ()).throw(IntelUnavailable("timeout")))
+
+    result = service_status()
+
+    assert result["status"] == "degraded"
+    assert result["feeds"][0]["warnings"]
 
 
 def test_vet_dependency_persists_contract_fields(tmp_path, monkeypatch) -> None:
@@ -121,3 +137,22 @@ def test_create_exception_persists_request(tmp_path, monkeypatch) -> None:
     assert result["requestedAt"].endswith("Z")
     assert result["foundryTraceId"] == "foundry-trace-exception"
     assert "ps-123" in audit_path.read_text(encoding="utf-8")
+
+
+def test_sync_feeds_returns_manual_sync_summary(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    from pounce_sentinel import api
+
+    feed = {
+        "schema_version": "1.0",
+        "generated_at": "2026-06-04T00:00:00Z",
+        "sources": [{"name": "osv", "status": "ok"}],
+        "items": [],
+    }
+    monkeypatch.setattr(api, "sync_public_intelligence", lambda: feed)
+
+    result = sync_feeds({})
+
+    assert result["statusCode"] == 202
+    assert result["status"] == "synced"
+    assert result["generatedAt"] == "2026-06-04T00:00:00Z"

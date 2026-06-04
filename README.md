@@ -14,6 +14,7 @@ This repository is prepared as a local-first hackathon prototype:
 - TypeScript Teams bot command scaffold.
 - Foundry OpenAPI, Toolbox, and Agent Framework surfaces for policy tools.
 - Bicep templates and docs for later Azure setup.
+- First-pass real intelligence feed support for GitHub malware advisories, OSV malware data, hosted normalized feed artifacts, npm provenance warnings, and normalized SBOM policy items.
 
 No real tenant IDs, subscription IDs, secrets, or Microsoft account values are committed.
 
@@ -44,6 +45,12 @@ bash scripts/python-test.sh
 bash scripts/dev-smoke.sh
 ```
 
+Refresh public threat-intelligence feed state when network access is available:
+
+```bash
+"$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py sync-feeds
+```
+
 Install Node dependencies when you want to work on the dashboard, action, or bot:
 
 ```bash
@@ -62,6 +69,7 @@ The planned public API is stable for the Microsoft integrations:
 - `GET /api/v1/verdicts/{auditId}/explain`
 - `GET /api/v1/status`
 - `POST /api/v1/exceptions`
+- `POST /api/v1/feeds/sync`
 
 Verdicts use this shape:
 

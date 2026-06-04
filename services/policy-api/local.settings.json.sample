@@ -4,7 +4,13 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "POUNCE_SENTINEL_ENV": "local",
-    "POUNCE_SENTINEL_AUDIT_PATH": ".pounce-sentinel/verdicts.jsonl"
+    "POUNCE_SENTINEL_AUDIT_PATH": ".pounce-sentinel/verdicts.jsonl",
+    "POUNCE_SENTINEL_FEED_STATE_PATH": ".pounce-sentinel/feed-state.json",
+    "POUNCE_IOC_FEED_URL": "",
+    "POUNCE_FEED_STALE_AFTER_HOURS": "1",
+    "POUNCE_FEED_FAILURE_MODE": "warn",
+    "POUNCE_VULNERABILITY_ACTION": "warn",
+    "POUNCE_ENABLE_LIVE_LOOKUPS": "false",
+    "POUNCE_ENABLE_REGISTRY_PROVENANCE": "false"
   }
 }
-

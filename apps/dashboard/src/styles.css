@@ -549,6 +549,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   min-height: 34px;
   border-bottom: 1px solid #eef2f7;
@@ -571,6 +572,14 @@ button:disabled {
 .status-row strong {
   flex-shrink: 0;
   color: #111827;
+}
+
+.status-row em.feed-warning,
+.health-item em.feed-warning {
+  flex-basis: 100%;
+  color: #9a3412;
+  font-style: normal;
+  overflow-wrap: anywhere;
 }
 
 .status-row i {
