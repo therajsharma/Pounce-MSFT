@@ -31,6 +31,7 @@ import type { ServiceFeed, SourceKind, TimelineRow, VerdictKind, VerdictRow, Ver
 
 type QueueTab = 'Risk Queue' | 'Dependencies' | 'Tool Calls' | 'Repos';
 type PanelTab = 'Details' | 'Vulnerabilities' | 'Provenance' | 'Policy';
+type SidebarItem = 'Overview' | 'Risk Queue' | 'Dependencies' | 'Tool Calls' | 'Repos' | 'Policies' | 'Exceptions' | 'Audit Log' | 'Reports' | 'Settings';
 
 const queueTabs: QueueTab[] = ['Risk Queue', 'Dependencies', 'Tool Calls', 'Repos'];
 const panelTabs: PanelTab[] = ['Details', 'Vulnerabilities', 'Provenance', 'Policy'];
@@ -38,6 +39,7 @@ const panelTabs: PanelTab[] = ['Details', 'Vulnerabilities', 'Provenance', 'Poli
 export function App() {
   const [data, setData] = useState<DashboardData>(() => fallbackDashboardData());
   const [selectedId, setSelectedId] = useState<string | null>(data.verdicts[0]?.id ?? null);
+  const [activeNav, setActiveNav] = useState<SidebarItem>('Overview');
   const [activeTab, setActiveTab] = useState<QueueTab>('Risk Queue');
   const [panelTab, setPanelTab] = useState<PanelTab>('Details');
   const [verdictFilter, setVerdictFilter] = useState<'all' | VerdictKind>('all');
@@ -131,6 +133,20 @@ export function App() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
+  function selectQueue(tab: QueueTab, nav: SidebarItem = tab) {
+    setActiveNav(nav);
+    setActiveTab(tab);
+    setShowSettings(false);
+    setShowNotifications(false);
+  }
+
+  function selectAction(nav: SidebarItem, action: () => void) {
+    setActiveNav(nav);
+    setShowSettings(false);
+    setShowNotifications(false);
+    action();
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
@@ -145,16 +161,20 @@ export function App() {
         </div>
 
         <nav className="nav-list">
-          <NavItem icon={<Home size={18} />} label="Overview" active={activeTab === 'Risk Queue'} onClick={() => setActiveTab('Risk Queue')} />
-          <NavItem icon={<Shield size={18} />} label="Risk Queue" badge={String(counts.block + counts.warn)} active={activeTab === 'Risk Queue'} onClick={() => setActiveTab('Risk Queue')} />
-          <NavItem icon={<Box size={18} />} label="Dependencies" active={activeTab === 'Dependencies'} onClick={() => setActiveTab('Dependencies')} />
-          <NavItem icon={<Activity size={18} />} label="Tool Calls" active={activeTab === 'Tool Calls'} onClick={() => setActiveTab('Tool Calls')} />
-          <NavItem icon={<GitBranch size={18} />} label="Repos" active={activeTab === 'Repos'} onClick={() => setActiveTab('Repos')} />
-          <NavItem icon={<ShieldCheck size={18} />} label="Policies" onClick={() => setPanelTab('Policy')} />
-          <NavItem icon={<LockKeyhole size={18} />} label="Exceptions" onClick={() => setExceptionOpen(true)} />
-          <NavItem icon={<FileText size={18} />} label="Audit Log" onClick={() => setToast(`${data.verdicts.length} audit records loaded`)} />
-          <NavItem icon={<LayoutDashboard size={18} />} label="Reports" onClick={() => setToast(`${counts.block} blocked, ${counts.warn} warnings, ${counts.allow} allowed`)} />
-          <NavItem icon={<Settings size={18} />} label="Settings" active={showSettings} onClick={() => setShowSettings((value) => !value)} />
+          <NavItem icon={<Home size={18} />} label="Overview" active={activeNav === 'Overview'} onClick={() => selectQueue('Risk Queue', 'Overview')} />
+          <NavItem icon={<Shield size={18} />} label="Risk Queue" badge={String(counts.block + counts.warn)} active={activeNav === 'Risk Queue'} onClick={() => selectQueue('Risk Queue')} />
+          <NavItem icon={<Box size={18} />} label="Dependencies" active={activeNav === 'Dependencies'} onClick={() => selectQueue('Dependencies')} />
+          <NavItem icon={<Activity size={18} />} label="Tool Calls" active={activeNav === 'Tool Calls'} onClick={() => selectQueue('Tool Calls')} />
+          <NavItem icon={<GitBranch size={18} />} label="Repos" active={activeNav === 'Repos'} onClick={() => selectQueue('Repos')} />
+          <NavItem icon={<ShieldCheck size={18} />} label="Policies" active={activeNav === 'Policies'} onClick={() => selectAction('Policies', () => setPanelTab('Policy'))} />
+          <NavItem icon={<LockKeyhole size={18} />} label="Exceptions" active={activeNav === 'Exceptions'} onClick={() => selectAction('Exceptions', () => setExceptionOpen(true))} />
+          <NavItem icon={<FileText size={18} />} label="Audit Log" active={activeNav === 'Audit Log'} onClick={() => selectAction('Audit Log', () => setToast(`${data.verdicts.length} audit records loaded`))} />
+          <NavItem icon={<LayoutDashboard size={18} />} label="Reports" active={activeNav === 'Reports'} onClick={() => selectAction('Reports', () => setToast(`${counts.block} blocked, ${counts.warn} warnings, ${counts.allow} allowed`))} />
+          <NavItem icon={<Settings size={18} />} label="Settings" active={activeNav === 'Settings'} onClick={() => {
+            setActiveNav('Settings');
+            setShowNotifications(false);
+            setShowSettings((value) => !value);
+          }} />
         </nav>
       </aside>
 
@@ -170,7 +190,11 @@ export function App() {
             ) : null}
             <button aria-label="Search" onClick={() => setShowSearch((value) => !value)}><Search size={20} /></button>
             <button aria-label="Notifications" onClick={() => setShowNotifications((value) => !value)}><Bell size={20} /></button>
-            <button aria-label="Settings" onClick={() => setShowSettings((value) => !value)}><Settings size={20} /></button>
+            <button aria-label="Settings" onClick={() => {
+              setActiveNav('Settings');
+              setShowNotifications(false);
+              setShowSettings((value) => !value);
+            }}><Settings size={20} /></button>
             <button className="avatar" aria-label="Dashboard user">AB</button>
             <ChevronDown size={16} />
           </div>
@@ -182,7 +206,7 @@ export function App() {
           <section className="queue-column" aria-label="Risk queue">
             <div className="tabs">
               {queueTabs.map((tab) => (
-                <button key={tab} className={`tab ${tab === activeTab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
+                <button key={tab} className={`tab ${tab === activeTab ? 'active' : ''}`} onClick={() => selectQueue(tab)}>
                   {tab} {tab === 'Risk Queue' ? <span>{counts.block + counts.warn}</span> : null}
                 </button>
               ))}

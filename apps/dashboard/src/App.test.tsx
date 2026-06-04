@@ -137,6 +137,25 @@ describe('Pounce Sentinel dashboard', () => {
     });
     expect(await screen.findByText('Exception requested for event-stream@3.3.7')).toBeInTheDocument();
   });
+
+  it('keeps sidebar active state exclusive across options', async () => {
+    const { container } = render(<App />);
+
+    await screen.findByText('Policy API healthy');
+    expect(activeSidebarLabel(container)).toBe('Overview');
+
+    for (const label of ['Risk Queue', 'Dependencies', 'Tool Calls', 'Repos', 'Policies', 'Exceptions', 'Audit Log', 'Reports', 'Settings']) {
+      clickSidebar(container, label);
+      expect(activeSidebarLabel(container)).toBe(label);
+
+      if (label === 'Exceptions') {
+        fireEvent.click(screen.getByLabelText('Close exception dialog'));
+      }
+      if (label === 'Audit Log' || label === 'Reports') {
+        fireEvent.click(screen.getByRole('button', { name: /audit records loaded|blocked/ }));
+      }
+    }
+  });
 });
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -144,4 +163,20 @@ function jsonResponse(payload: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' }
   });
+}
+
+function clickSidebar(container: HTMLElement, label: string): void {
+  const button = sidebarButtons(container).find((item) => item.textContent?.includes(label));
+  if (!button) throw new Error(`Missing sidebar item: ${label}`);
+  fireEvent.click(button);
+}
+
+function activeSidebarLabel(container: HTMLElement): string | undefined {
+  const active = sidebarButtons(container).filter((item) => item.classList.contains('active'));
+  expect(active).toHaveLength(1);
+  return active[0].textContent?.replace(/\d+$/, '').trim();
+}
+
+function sidebarButtons(container: HTMLElement): HTMLButtonElement[] {
+  return Array.from(container.querySelectorAll('aside[aria-label="Main navigation"] .nav-item'));
 }
