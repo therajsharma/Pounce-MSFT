@@ -29,7 +29,7 @@ class FakePolicyClient:
 def test_build_policy_tools_exports_planned_multi_tool_surface() -> None:
     tools = build_policy_tools(FakePolicyClient())  # type: ignore[arg-type]
 
-    assert [tool.__name__ for tool in tools] == TOOL_NAMES
+    assert [_tool_name(tool) for tool in tools] == TOOL_NAMES
 
 
 def test_vet_dependency_tool_marks_foundry_source_and_trace() -> None:
@@ -51,3 +51,7 @@ def test_exception_tool_forwards_approval_metadata() -> None:
 
     assert result["statusCode"] == 202
     assert result["approver"] == "secops"
+
+
+def _tool_name(tool: object) -> str:
+    return str(getattr(tool, "name", getattr(tool, "__name__", "")))

@@ -24,7 +24,8 @@ bash scripts/python-test.sh
 Install the optional hosted-agent dependencies in an isolated environment:
 
 ```bash
-python3 -m venv .venv-foundry-agent
+PYTHON_BIN="$(bash scripts/resolve-python.sh)"
+"${PYTHON_BIN}" -m venv .venv-foundry-agent
 source .venv-foundry-agent/bin/activate
 pip install -r integrations/foundry/agent/requirements.txt
 ```
@@ -46,4 +47,3 @@ PYTHONPATH=integrations/foundry/agent python -m pounce_foundry_agent serve
 
 For a deployed hosted agent, keep the same startup command and provide the
 environment variables through the Foundry hosted-agent configuration.
-

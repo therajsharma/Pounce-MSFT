@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from pounce_foundry_agent.client import PouncePolicyClient
@@ -8,7 +7,7 @@ from pounce_foundry_agent.client import PouncePolicyClient
 TOOL_NAMES = ["vet_dependency", "scan_manifest", "explain_verdict", "request_exception"]
 
 
-def build_policy_tools(client: PouncePolicyClient | None = None) -> list[Callable[..., dict[str, Any]]]:
+def build_policy_tools(client: PouncePolicyClient | None = None) -> list[Any]:
     policy_client = client or PouncePolicyClient.from_env()
 
     def vet_dependency(
@@ -94,11 +93,11 @@ def build_policy_tools(client: PouncePolicyClient | None = None) -> list[Callabl
 
 
 def _decorate(
-    func: Callable[..., dict[str, Any]],
+    func: Any,
     name: str,
     description: str,
     approval_mode: str,
-) -> Callable[..., dict[str, Any]]:
+) -> Any:
     try:
         from agent_framework import tool
     except ImportError:
