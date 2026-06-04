@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - apps/dashboard/**
+      - apps/dashboard/api/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -34,4 +35,5 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POUNCE_SENTINEL_DEV }}
           action: upload
           app_location: apps/dashboard/dist
+          api_location: apps/dashboard/api
           skip_app_build: true

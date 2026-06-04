@@ -1,0 +1,9 @@
+{
+  "name": "pounce-dashboard-api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/functions/pounce.js",
+  "dependencies": {
+    "@azure/functions": "^4.7.0"
+  }
+}

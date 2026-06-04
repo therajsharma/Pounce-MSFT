@@ -144,6 +144,19 @@ Current dev import:
 - Imported agent version: `pounce-sentinel-policy-guard:1`
 - API base URL in OpenAPI spec: `https://pouncesentineldev-api.azurewebsites.net/api`
 
+## Dashboard setup
+
+The dashboard calls the same-origin Static Web Apps managed API at `/api/v1/...`.
+Configure these Static Web App app settings on `pouncesentineldev-dashboard` so the
+managed API can proxy to the deployed policy Function App without exposing the
+function key in the React bundle:
+
+- `POUNCE_SENTINEL_API_BASE_URL=https://pouncesentineldev-api.azurewebsites.net/api`
+- `POUNCE_SENTINEL_API_KEY=<Function App default key>`
+
+The dashboard workflow deploys `apps/dashboard/dist` and the managed API under
+`apps/dashboard/api`.
+
 ## Teams setup
 
 1. Register a bot in Azure Bot Service or Teams Developer Portal.
