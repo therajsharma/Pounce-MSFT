@@ -187,8 +187,12 @@ export function App() {
   }
 
   async function copyReportSummary() {
-    await navigator.clipboard?.writeText(reportSummary(report, data.status.mode));
-    setToast('Report summary copied');
+    try {
+      await writeClipboardText(reportSummary(report, data.status.mode));
+      setToast('Report summary copied');
+    } catch {
+      setToast('Copy blocked by browser permissions');
+    }
   }
 
   function exportReportCsv() {
@@ -995,6 +999,34 @@ function toCsv(rows: VerdictRow[]): string {
 
 function csvCell(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+async function writeClipboardText(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall back for embedded browsers that deny async clipboard writes.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.inset = '0 auto auto 0';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    if (!document.execCommand('copy')) throw new Error('copy command rejected');
+  } finally {
+    textarea.remove();
+  }
 }
 
 function loadDashboardSettings(): DashboardSettings {

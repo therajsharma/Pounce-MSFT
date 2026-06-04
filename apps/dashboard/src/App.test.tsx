@@ -94,6 +94,7 @@ describe('Pounce Sentinel dashboard', () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
+    Object.defineProperty(window.navigator, 'clipboard', { value: undefined, configurable: true });
     vi.unstubAllGlobals();
   });
 
@@ -140,6 +141,8 @@ describe('Pounce Sentinel dashboard', () => {
   });
 
   it('renders reports as a full dashboard workspace', async () => {
+    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    Object.defineProperty(window.navigator, 'clipboard', { value: clipboard, configurable: true });
     const { container } = render(<App />);
 
     await screen.findByText('Policy API healthy');
@@ -151,6 +154,10 @@ describe('Pounce Sentinel dashboard', () => {
     expect(screen.getByRole('button', { name: 'Copy summary' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
     expect(screen.getByText('org/web')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy summary' }));
+    expect(await screen.findByText('Report summary copied')).toBeInTheDocument();
+    expect(clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('Pounce Sentinel report'));
   });
 
   it('persists settings and applies dashboard defaults', async () => {

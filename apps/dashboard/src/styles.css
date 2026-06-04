@@ -445,11 +445,29 @@ button:disabled {
 }
 
 .analytics-table table {
-  min-width: 520px;
+  min-width: 100%;
+  table-layout: fixed;
 }
 
 .analytics-table tbody tr {
   cursor: default;
+}
+
+.analytics-table th,
+.analytics-table td {
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.analytics-table th:first-child,
+.analytics-table td:first-child {
+  width: 46%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.analytics-table .risk-score {
+  min-width: 36px;
 }
 
 .settings-form {
