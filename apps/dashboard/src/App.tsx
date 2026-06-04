@@ -88,6 +88,7 @@ export function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [settings, setSettings] = useState<DashboardSettings>(() => loadDashboardSettings());
+  const [copyFallbackText, setCopyFallbackText] = useState<string | null>(null);
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [exceptionReason, setExceptionReason] = useState('');
   const [submittingException, setSubmittingException] = useState(false);
@@ -187,11 +188,13 @@ export function App() {
   }
 
   async function copyReportSummary() {
+    const summary = reportSummary(report, data.status.mode);
     try {
-      await writeClipboardText(reportSummary(report, data.status.mode));
+      await writeClipboardText(summary);
       setToast('Report summary copied');
     } catch {
-      setToast('Copy blocked by browser permissions');
+      setCopyFallbackText(summary);
+      setToast('Summary ready to copy manually');
     }
   }
 
@@ -366,6 +369,25 @@ export function App() {
               <button type="button" onClick={() => setExceptionOpen(false)}>Cancel</button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {copyFallbackText ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="copy-fallback-title">
+            <div className="modal-header">
+              <strong id="copy-fallback-title">Report summary</strong>
+              <button type="button" className="icon-button" aria-label="Close report summary" onClick={() => setCopyFallbackText(null)}><X size={16} /></button>
+            </div>
+            <p>Clipboard access was blocked by the browser. The generated summary is ready below.</p>
+            <label>
+              Summary
+              <textarea value={copyFallbackText} readOnly rows={8} onFocus={(event) => event.currentTarget.select()} />
+            </label>
+            <div className="panel-actions">
+              <button type="button" className="primary" onClick={() => setCopyFallbackText(null)}>Done</button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -1003,8 +1025,10 @@ function csvCell(value: string): string {
 
 async function writeClipboardText(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
+    const writePromise = navigator.clipboard.writeText(value);
+    writePromise.catch(() => undefined);
     try {
-      await navigator.clipboard.writeText(value);
+      await withTimeout(writePromise, 800);
       return;
     } catch {
       // Fall back for embedded browsers that deny async clipboard writes.
@@ -1023,10 +1047,18 @@ async function writeClipboardText(value: string): Promise<void> {
   textarea.select();
 
   try {
-    if (!document.execCommand('copy')) throw new Error('copy command rejected');
+    if (typeof document.execCommand !== 'function' || !document.execCommand('copy')) throw new Error('copy command rejected');
+    return;
   } finally {
     textarea.remove();
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error('clipboard write timed out')), timeoutMs);
+    promise.then(resolve, reject).finally(() => window.clearTimeout(timeoutId));
+  });
 }
 
 function loadDashboardSettings(): DashboardSettings {

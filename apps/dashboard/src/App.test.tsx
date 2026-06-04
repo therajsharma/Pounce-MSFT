@@ -160,6 +160,20 @@ describe('Pounce Sentinel dashboard', () => {
     expect(clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('Pounce Sentinel report'));
   });
 
+  it('opens a manual report summary when clipboard access is blocked', async () => {
+    const clipboard = { writeText: vi.fn().mockRejectedValue(new Error('blocked')) };
+    Object.defineProperty(window.navigator, 'clipboard', { value: clipboard, configurable: true });
+    const { container } = render(<App />);
+
+    await screen.findByText('Policy API healthy');
+    clickSidebar(container, 'Reports');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy summary' }));
+
+    expect(await screen.findByText('Summary ready to copy manually')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Report summary' })).toBeInTheDocument();
+    expect((screen.getByLabelText('Summary') as HTMLTextAreaElement).value).toContain('Pounce Sentinel report');
+  });
+
   it('persists settings and applies dashboard defaults', async () => {
     const { container } = render(<App />);
 
