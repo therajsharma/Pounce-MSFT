@@ -53,5 +53,11 @@ def test_exception_tool_forwards_approval_metadata() -> None:
     assert result["approver"] == "secops"
 
 
+def test_build_policy_tools_can_return_plain_callables_for_local_demo() -> None:
+    tools = build_policy_tools(FakePolicyClient(), decorate=False)  # type: ignore[arg-type]
+
+    assert [tool.__name__ for tool in tools] == TOOL_NAMES
+
+
 def _tool_name(tool: object) -> str:
     return str(getattr(tool, "name", getattr(tool, "__name__", "")))

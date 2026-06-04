@@ -7,7 +7,7 @@ from pounce_foundry_agent.client import PouncePolicyClient
 TOOL_NAMES = ["vet_dependency", "scan_manifest", "explain_verdict", "request_exception"]
 
 
-def build_policy_tools(client: PouncePolicyClient | None = None) -> list[Any]:
+def build_policy_tools(client: PouncePolicyClient | None = None, *, decorate: bool = True) -> list[Any]:
     policy_client = client or PouncePolicyClient.from_env()
 
     def vet_dependency(
@@ -84,11 +84,15 @@ def build_policy_tools(client: PouncePolicyClient | None = None) -> list[Any]:
             )
         )
 
+    tools = [vet_dependency, scan_manifest, explain_verdict, request_exception]
+    if not decorate:
+        return tools
+
     return [
-        _decorate(vet_dependency, "vet_dependency", "Vet an exact dependency release.", "never_require"),
-        _decorate(scan_manifest, "scan_manifest", "Scan an inline dependency manifest.", "never_require"),
-        _decorate(explain_verdict, "explain_verdict", "Explain an existing Pounce audit verdict.", "never_require"),
-        _decorate(request_exception, "request_exception", "Request a governed exception.", "always_require"),
+        _decorate(tools[0], "vet_dependency", "Vet an exact dependency release.", "never_require"),
+        _decorate(tools[1], "scan_manifest", "Scan an inline dependency manifest.", "never_require"),
+        _decorate(tools[2], "explain_verdict", "Explain an existing Pounce audit verdict.", "never_require"),
+        _decorate(tools[3], "request_exception", "Request a governed exception.", "always_require"),
     ]
 
 
