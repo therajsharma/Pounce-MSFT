@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import base64
+import json
 from datetime import UTC, datetime
 from urllib.error import HTTPError
 from unittest import mock
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 from pounce_sentinel import feeds
+from pounce_sentinel import signatures
 
 
 class FakeResponse:
@@ -183,6 +188,59 @@ def test_feed_status_rows_include_dynamic_health_fields(tmp_path, monkeypatch) -
     assert rows[0]["selectedFrom"] == "local_sync_cache"
     assert rows[0]["trustState"] == "local_sync_cache"
     assert rows[0]["activeItemCount"] >= 1
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _ed25519_pem_and_token(payload_bytes: bytes) -> tuple[str, str]:
+    signer = ed25519.Ed25519PrivateKey.generate()
+    pem = signer.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode("ascii")
+    header_b64 = _b64url(json.dumps({"alg": "EdDSA"}, separators=(",", ":")).encode())
+    signing_input = f"{header_b64}.{_b64url(payload_bytes)}".encode("ascii")
+    return pem, f"{header_b64}..{_b64url(signer.sign(signing_input))}"
+
+
+def test_load_remote_feed_verifies_envelope_signature(monkeypatch) -> None:
+    feed = {"schema_version": "1.0", "generated_at": "2026-06-04T00:00:00Z", "sources": [], "items": []}
+    pem, token = _ed25519_pem_and_token(signatures.canonicalize_envelope(feed))
+    monkeypatch.setenv("POUNCE_FEED_SIGNING_PUBLIC_KEYS", pem)
+
+    signed_body = json.dumps({**feed, "signature": token}).encode("utf-8")
+    with mock.patch("pounce_sentinel.feeds.build_opener", return_value=FakeOpener(FakeResponse(chunks=[signed_body]))):
+        result = feeds.load_remote_feed("https://feed.example/intel.json")
+    assert result["items"] == []
+
+    tampered = {**feed, "items": [_feed_item("x", {"type": "package_exact", "ecosystem": "npm", "name": "x", "version": "1.0.0"})], "signature": token}
+    tampered_body = json.dumps(tampered).encode("utf-8")
+    with mock.patch("pounce_sentinel.feeds.build_opener", return_value=FakeOpener(FakeResponse(chunks=[tampered_body]))):
+        with pytest.raises(feeds.IntelUnavailable, match="signature invalid"):
+            feeds.load_remote_feed("https://feed.example/intel.json")
+
+
+def test_load_remote_feed_rejects_missing_signature_when_keys_configured(monkeypatch) -> None:
+    pem, _token = _ed25519_pem_and_token(b"{}")
+    monkeypatch.setenv("POUNCE_FEED_SIGNING_PUBLIC_KEYS", pem)
+    body = json.dumps({"schema_version": "1.0", "items": []}).encode("utf-8")
+
+    with mock.patch("pounce_sentinel.feeds.build_opener", return_value=FakeOpener(FakeResponse(chunks=[body]))):
+        with pytest.raises(feeds.IntelUnavailable, match="missing a required signature"):
+            feeds.load_remote_feed("https://feed.example/intel.json")
+
+
+def test_runtime_feed_reports_verified_trust_when_keys_configured(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    pem, _token = _ed25519_pem_and_token(b"{}")
+    monkeypatch.setenv("POUNCE_FEED_SIGNING_PUBLIC_KEYS", pem)
+
+    with mock.patch("pounce_sentinel.feeds.load_remote_feed", return_value=_feed("remote-live", "demo")):
+        context = feeds.runtime_feed("https://feed.example/intel.json")
+
+    assert context["selected_from"] == "remote"
+    assert context["trust_state"] == "hosted_feed_verified"
 
 
 def _feed(source: str, package_name: str) -> dict[str, object]:
