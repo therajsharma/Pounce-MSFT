@@ -274,6 +274,28 @@ def normalize_osv_advisory(advisory: dict[str, Any], *, observed_at: str, action
                 item["revoked_at"] = withdrawn_at
                 item["revocation_reason"] = "OSV advisory withdrawn."
             items.append(item)
+        for range_index, range_obj in enumerate(affected_item.get("ranges") or []):
+            if not isinstance(range_obj, dict):
+                continue
+            for spec_index, version_spec in enumerate(_osv_range_specs(range_obj)):
+                match = {"type": "package_range", "ecosystem": ecosystem, "name": name, "version_spec": version_spec}
+                item_id = f"{advisory_id}:{ecosystem}:{name}:package_range:{range_index}.{spec_index}:{version_spec}"
+                item = _item(
+                    item_id=item_id,
+                    kind="malicious_package" if action == "block" else "vulnerability",
+                    match=match,
+                    action=action,
+                    reason=summary or f"OSV advisory {advisory_id}.",
+                    source="osv",
+                    source_refs=refs,
+                    published_at=published_at,
+                    modified_at=modified_at,
+                    observed_at=observed_at,
+                )
+                if withdrawn_at:
+                    item["revoked_at"] = withdrawn_at
+                    item["revocation_reason"] = "OSV advisory withdrawn."
+                items.append(item)
     items.extend(_indicator_items(advisory_id, summary, str(advisory.get("details") or ""), "osv", refs, published_at, modified_at, observed_at))
     return normalize_feed_artifact({"items": items}, observed_at=observed_at, default_source="osv")["items"]
 
@@ -320,6 +342,37 @@ def _match_from_range(ecosystem: str, name: str, version_range: str) -> dict[str
     if exact and not any(character in exact for character in "<> *|,"):
         return {"type": "package_exact", "ecosystem": ecosystem, "name": name, "version": exact}
     return {"type": "package_range", "ecosystem": ecosystem, "name": name, "version_spec": normalized_range}
+
+
+def _osv_range_specs(range_obj: dict[str, Any]) -> list[str]:
+    """Translate an OSV affected-range (introduced/fixed/last_affected events) into
+    one version_spec string per affected interval. GIT ranges are skipped."""
+    if str(range_obj.get("type", "")).strip().upper() == "GIT":
+        return []
+    events = range_obj.get("events") if isinstance(range_obj.get("events"), list) else []
+    specs: list[str] = []
+    introduced: str | None = None
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if "introduced" in event:
+            value = str(event.get("introduced") or "").strip()
+            introduced = None if value in {"", "0"} else value
+        elif "fixed" in event:
+            fixed = str(event.get("fixed") or "").strip()
+            bounds = ([f">={introduced}"] if introduced else []) + ([f"<{fixed}"] if fixed else [])
+            if bounds:
+                specs.append(", ".join(bounds))
+            introduced = None
+        elif "last_affected" in event:
+            last = str(event.get("last_affected") or "").strip()
+            bounds = ([f">={introduced}"] if introduced else []) + ([f"<={last}"] if last else [])
+            if bounds:
+                specs.append(", ".join(bounds))
+            introduced = None
+    if introduced:
+        specs.append(f">={introduced}")
+    return specs
 
 
 def _indicator_items(

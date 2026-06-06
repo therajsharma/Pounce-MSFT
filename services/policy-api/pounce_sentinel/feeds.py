@@ -13,6 +13,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from pounce_sentinel.intel import SEEDED_INTEL
 from pounce_sentinel import storage
+from pounce_sentinel import version_ranges
 
 FEED_SCHEMA_VERSION = "1.0"
 DEFAULT_FEED_STALE_AFTER_HOURS = 6
@@ -237,7 +238,9 @@ def match_package_items(
         match_type = str(match.get("type", "")).strip()
         if match_type == "package_exact" and str(match.get("version", "")).strip() == normalized_version:
             matches.append(item)
-        elif match_type == "package_range" and _range_matches(str(match.get("version_spec", "")), normalized_version):
+        elif match_type == "package_range" and _range_matches(
+            str(match.get("version_spec", "")), normalized_version, normalized_ecosystem
+        ):
             matches.append(item)
     return matches
 
@@ -531,13 +534,11 @@ def _feed_warning(code: str, detail: str, selected_from: str) -> dict[str, Any]:
     return {"code": code, "detail": detail, "selected_from": selected_from}
 
 
-def _range_matches(version_spec: str, version: str) -> bool:
+def _range_matches(version_spec: str, version: str, ecosystem: str) -> bool:
     spec = version_spec.strip()
     if not spec:
         return False
-    if spec.startswith("="):
-        return spec.lstrip("= ").strip() == version
-    return False
+    return version_ranges.satisfies(version, spec, ecosystem=ecosystem)
 
 
 def _response_text(response: Any, *, url: str, max_response_bytes: int) -> str:

@@ -101,6 +101,43 @@ def test_blocks_normalized_feed_match(tmp_path, monkeypatch) -> None:
     assert result["evidence"][0]["source"] == "osv"
 
 
+def test_blocks_feed_range_match(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_FEED_STALE_AFTER_HOURS", "1000000")  # isolate range matching from staleness
+    persist_feed_cache(
+        {
+            "schema_version": "1.0",
+            "generated_at": "2026-06-04T00:00:00Z",
+            "sources": [{"name": "osv", "status": "ok", "item_count": 1}],
+            "items": [
+                {
+                    "id": "OSV-2026-range:npm:demo:package_range",
+                    "kind": "malicious_package",
+                    "match": {"type": "package_range", "ecosystem": "npm", "name": "demo", "version_spec": ">=1.0.0, <1.2.8"},
+                    "action": "block",
+                    "confidence": 1.0,
+                    "reason": "Vulnerable version range.",
+                    "source": "osv",
+                    "source_refs": [{"kind": "osv", "id": "OSV-2026-range", "url": "https://osv.dev/vulnerability/OSV-2026-range"}],
+                    "published_at": "2026-06-01T00:00:00Z",
+                    "modified_at": "2026-06-04T00:00:00Z",
+                    "first_seen": "2026-06-04T00:00:00Z",
+                    "last_seen": "2026-06-04T00:00:00Z",
+                }
+            ],
+        },
+        fetched_at="2026-06-04T00:00:00Z",
+        fetched_from="local_sync",
+    )
+
+    blocked = vet_package({"ecosystem": "npm", "packageName": "demo", "version": "1.2.7"})
+    allowed = vet_package({"ecosystem": "npm", "packageName": "demo", "version": "1.2.8"})
+
+    assert blocked["verdict"] == "block"
+    assert blocked["policyId"] == "threat-intel-feed-block"
+    assert allowed["verdict"] == "allow"
+
+
 def test_warns_on_normalized_policy_feed_match(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
     persist_feed_cache(

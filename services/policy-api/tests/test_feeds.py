@@ -87,6 +87,22 @@ def test_match_package_items_normalizes_pypi_names() -> None:
     assert [item["id"] for item in matches] == ["pypi-demo"]
 
 
+def test_match_package_items_matches_version_ranges() -> None:
+    npm_item = _feed_item(
+        "npm-range",
+        {"type": "package_range", "ecosystem": "npm", "name": "demo", "version_spec": ">= 1.0.0, < 1.2.8"},
+    )
+    pypi_item = _feed_item(
+        "pypi-range",
+        {"type": "package_range", "ecosystem": "pypi", "name": "demo", "version_spec": ">=1.0,<2.0"},
+    )
+
+    assert [m["id"] for m in feeds.match_package_items([npm_item], "npm", "demo", "1.2.7")] == ["npm-range"]
+    assert feeds.match_package_items([npm_item], "npm", "demo", "1.2.8") == []
+    assert [m["id"] for m in feeds.match_package_items([pypi_item], "pypi", "demo", "1.9.0")] == ["pypi-range"]
+    assert feeds.match_package_items([pypi_item], "pypi", "demo", "2.0.0") == []
+
+
 def test_runtime_feed_prefers_remote_then_cache_then_local_then_seed(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
     monkeypatch.setenv("POUNCE_FEED_STALE_AFTER_HOURS", "6")
