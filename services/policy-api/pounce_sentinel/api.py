@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,6 +8,7 @@ from pounce_sentinel.feed_sync import sync_public_intelligence
 from pounce_sentinel.feeds import feed_status_rows, runtime_feed
 from pounce_sentinel.manifests import scan_dependencies
 from pounce_sentinel.policy import vet_package
+from pounce_sentinel.sbom import parse_sbom
 from pounce_sentinel.storage import (
     append_exception,
     append_verdict,
@@ -69,6 +71,54 @@ def scan_manifest(payload: dict[str, Any]) -> dict[str, Any]:
         "dependencyCount": len(dependencies),
         "blockedCount": sum(1 for item in verdicts if item["verdict"] == "block"),
         "warningCount": sum(1 for item in verdicts if item["verdict"] == "warn"),
+        "verdicts": verdicts,
+    }
+
+
+_MAX_SBOM_BYTES = 5 * 1024 * 1024
+
+
+def scan_sbom(payload: dict[str, Any]) -> dict[str, Any]:
+    content = str(payload.get("content", ""))
+    if len(content.encode("utf-8")) > _MAX_SBOM_BYTES:
+        return {"statusCode": 413, "error": "SBOM content exceeds the 5 MiB limit"}
+    try:
+        document = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return {"statusCode": 400, "error": "SBOM content was not valid JSON"}
+    try:
+        parsed = parse_sbom(document)
+    except ValueError as exc:
+        return {"statusCode": 400, "error": str(exc)}
+
+    verdicts: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for component in parsed["components"]:
+        key = (component["ecosystem"], component["name"], component["version"])
+        if key in seen:
+            continue
+        seen.add(key)
+        verdict = vet_package(
+            {
+                **payload,
+                "ecosystem": component["ecosystem"],
+                "packageName": component["name"],
+                "version": component["version"],
+            }
+        )
+        append_verdict(verdict)
+        verdicts.append(verdict)
+
+    return {
+        "statusCode": 200,
+        "sbomPath": payload.get("sbomPath", "inline"),
+        "format": parsed["format"],
+        "specVersion": parsed["spec_version"],
+        "componentCount": len(verdicts),
+        "blockedCount": sum(1 for item in verdicts if item["verdict"] == "block"),
+        "warningCount": sum(1 for item in verdicts if item["verdict"] == "warn"),
+        "skippedCount": len(parsed["skipped"]),
+        "skipped": parsed["skipped"],
         "verdicts": verdicts,
     }
 

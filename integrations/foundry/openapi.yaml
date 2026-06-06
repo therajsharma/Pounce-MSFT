@@ -48,6 +48,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScanManifestResponse'
+  /v1/scan-sbom:
+    post:
+      operationId: scan_sbom
+      summary: Scan a CycloneDX or SPDX SBOM.
+      description: Parses an inline CycloneDX or SPDX JSON SBOM and vets every npm/pypi component with the same policy engine, returning one consolidated result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanSbomRequest'
+      responses:
+        '200':
+          description: SBOM scan result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanSbomResponse'
   /v1/verdicts/{auditId}/explain:
     get:
       operationId: explain_verdict
@@ -256,6 +274,64 @@ components:
           type: integer
         warningCount:
           type: integer
+        verdicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/VerdictResponse'
+    ScanSbomRequest:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          required:
+            - content
+          properties:
+            content:
+              type: string
+              description: Inline CycloneDX or SPDX JSON SBOM document.
+            sbomPath:
+              type: string
+              example: bom.json
+            source:
+              type: string
+              example: foundry
+            repository:
+              type: string
+              example: org/agent-service
+            actor:
+              type: string
+              example: foundry-agent
+    ScanSbomResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        sbomPath:
+          type: string
+        format:
+          type: string
+          enum: [cyclonedx, spdx]
+        specVersion:
+          type: string
+        componentCount:
+          type: integer
+        blockedCount:
+          type: integer
+        warningCount:
+          type: integer
+        skippedCount:
+          type: integer
+        skipped:
+          type: array
+          items:
+            type: object
+            properties:
+              purl:
+                type: string
+                nullable: true
+              name:
+                type: string
+              reason:
+                type: string
         verdicts:
           type: array
           items:

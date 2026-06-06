@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+
 from pounce_sentinel.api import (
     create_exception,
     explain_verdict,
     scan_manifest,
+    scan_sbom,
     service_status,
     sync_feeds,
     vet_dependency,
@@ -97,6 +100,58 @@ def test_scan_manifest_propagates_trace_to_dependency_verdicts(tmp_path, monkeyp
     )
 
     assert result["verdicts"][0]["foundryTraceId"] == "trace-789"
+
+
+def test_scan_sbom_cyclonedx_counts_blocked_components(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_AUDIT_PATH", str(tmp_path / "verdicts.jsonl"))
+    content = json.dumps(
+        {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.6",
+            "components": [
+                {"type": "library", "purl": "pkg:npm/event-stream@3.3.7"},
+                {"type": "library", "purl": "pkg:npm/lodash@4.17.21"},
+                {"type": "library", "purl": "pkg:maven/org.apache/foo@1.0"},
+            ],
+        }
+    )
+
+    result = scan_sbom({"content": content, "sbomPath": "bom.json", "source": "foundry", "traceId": "trace-sbom"})
+
+    assert result["statusCode"] == 200
+    assert result["format"] == "cyclonedx"
+    assert result["componentCount"] == 2
+    assert result["blockedCount"] == 1
+    assert result["skippedCount"] == 1
+    assert result["verdicts"][0]["foundryTraceId"] == "trace-sbom"
+
+
+def test_scan_sbom_spdx_blocks_known_pypi_malware(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_AUDIT_PATH", str(tmp_path / "verdicts.jsonl"))
+    content = json.dumps(
+        {
+            "spdxVersion": "SPDX-2.3",
+            "packages": [
+                {
+                    "name": "ctx",
+                    "versionInfo": "0.1.2",
+                    "externalRefs": [
+                        {"referenceCategory": "PACKAGE_MANAGER", "referenceType": "purl", "referenceLocator": "pkg:pypi/ctx@0.1.2"}
+                    ],
+                }
+            ],
+        }
+    )
+
+    result = scan_sbom({"content": content})
+
+    assert result["format"] == "spdx"
+    assert result["componentCount"] == 1
+    assert result["blockedCount"] == 1
+
+
+def test_scan_sbom_rejects_invalid_json() -> None:
+    assert scan_sbom({"content": "not json"})["statusCode"] == 400
 
 
 def test_explain_verdict_returns_remediation(tmp_path, monkeypatch) -> None:
