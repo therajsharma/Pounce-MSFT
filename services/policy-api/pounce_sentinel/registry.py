@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any
@@ -62,8 +63,6 @@ def _fetch_json(url: str, *, accept: str = "application/json") -> Any:
         raise IntelUnavailable(f"{url} returned HTTP {exc.code}: {exc.reason}") from exc
     except URLError as exc:
         raise IntelUnavailable(f"{url} could not be reached: {exc.reason}") from exc
-    import json
-
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:

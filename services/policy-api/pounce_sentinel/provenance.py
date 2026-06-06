@@ -281,7 +281,14 @@ def _check_identity(cert: x509.Certificate, identity_allowlist: list[str] | None
     uris = extract_san_uris(cert)
     identity = uris[0] if uris else None
     if identity_allowlist:
-        patterns = [re.compile(pattern) for pattern in identity_allowlist if pattern]
+        patterns = []
+        for pattern in identity_allowlist:
+            if not pattern:
+                continue
+            try:
+                patterns.append(re.compile(pattern))
+            except re.error:
+                continue  # a malformed allowlist pattern must not pass — fail closed
         if not any(pattern.search(uri) for uri in uris for pattern in patterns):
             raise _ProvenanceError("certificate identity did not match the provenance allowlist")
     return identity

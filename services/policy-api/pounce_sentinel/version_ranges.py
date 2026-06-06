@@ -104,8 +104,8 @@ def _npm_satisfies(version: str, spec: str) -> bool:
     if not comparators:
         return True
     if _is_prerelease(version) and not any("-" in comparator for comparator in comparators):
-        # npm excludes pre-releases unless the spec itself names one (or matches exactly)
-        return _compare(version, version) == 0 and all(c.lstrip("=") == version for c in comparators)
+        # npm excludes pre-releases unless a comparator names this exact pre-release
+        return any(comparator.lstrip("=").strip() == version.strip() for comparator in comparators)
     return all(_npm_comparator(version, comparator) for comparator in comparators)
 
 
