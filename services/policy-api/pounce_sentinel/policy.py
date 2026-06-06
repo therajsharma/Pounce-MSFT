@@ -161,7 +161,9 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     provenance_findings = registry_findings(ecosystem, package_name, version) if _registry_provenance_enabled() else []
-    if provenance_findings:
+    warn_findings = [finding for finding in provenance_findings if str(finding.get("verdict_impact")) == "warn"]
+    verified_findings = [finding for finding in provenance_findings if str(finding.get("verdict_impact")) == "none"]
+    if warn_findings:
         return _build_verdict(
             ecosystem=ecosystem,
             package_name=package_name,
@@ -172,14 +174,14 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
             verdict="warn",
             risk_score=52,
             policy_id="registry-provenance-warning",
-            reasons=[str(finding.get("evidence", "Registry provenance warning")) for finding in provenance_findings],
+            reasons=[str(finding.get("evidence", "Registry provenance warning")) for finding in warn_findings],
             evidence=[
                 {
                     "source": str(finding.get("source", "registry")),
                     "label": str(finding.get("signal_name", "registry_provenance_warning")),
-                    "url": "https://registry.npmjs.org" if ecosystem == "npm" else "https://example.invalid/pounce/policy/registry-provenance",
+                    "url": str(finding.get("evidence_url") or _provenance_fallback_url(ecosystem)),
                 }
-                for finding in provenance_findings
+                for finding in warn_findings
             ],
             recommended_version=version,
             trace=trace,
@@ -193,6 +195,25 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
         risk_score = 18
         reasons = ["Exact version allowed", "Manual review not required for seeded demo policy"]
 
+    evidence = [
+        {
+            "source": "pounce-policy",
+            "label": "Seeded local allow policy",
+            "url": "https://example.invalid/pounce/policy/seeded-safe-baseline",
+        }
+    ]
+    if verified_findings:
+        verified = verified_findings[0]
+        evidence.append(
+            {
+                "source": str(verified.get("source", "registry")),
+                "label": str(verified.get("signal_name", "provenance_verified")),
+                "url": str(verified.get("evidence_url") or _provenance_fallback_url(ecosystem)),
+            }
+        )
+        reasons = [*reasons, "Registry provenance verified"]
+        risk_score = min(risk_score, 12)
+
     return _build_verdict(
         ecosystem=ecosystem,
         package_name=package_name,
@@ -204,13 +225,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
         risk_score=risk_score,
         policy_id="seeded-safe-baseline",
         reasons=reasons,
-        evidence=[
-            {
-                "source": "pounce-policy",
-                "label": "Seeded local allow policy",
-                "url": "https://example.invalid/pounce/policy/seeded-safe-baseline",
-            }
-        ],
+        evidence=evidence,
         recommended_version=version,
         trace=trace,
         created_at=now,
@@ -377,6 +392,14 @@ def _live_lookups_enabled() -> bool:
 
 def _registry_provenance_enabled() -> bool:
     return _live_lookups_enabled() or str(os.getenv("POUNCE_ENABLE_REGISTRY_PROVENANCE", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _provenance_fallback_url(ecosystem: str) -> str:
+    if ecosystem == "npm":
+        return "https://registry.npmjs.org"
+    if ecosystem == "pypi":
+        return "https://pypi.org"
+    return "https://example.invalid/pounce/policy/registry-provenance"
 
 
 def _feed_failure_mode() -> str:

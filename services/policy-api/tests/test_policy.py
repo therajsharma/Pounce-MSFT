@@ -219,6 +219,29 @@ def test_registry_provenance_warning_when_enabled(tmp_path, monkeypatch) -> None
     assert result["policyId"] == "registry-provenance-warning"
 
 
+def test_registry_provenance_verified_stays_allow(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_ENABLE_REGISTRY_PROVENANCE", "true")
+    with mock.patch(
+        "pounce_sentinel.policy.registry_findings",
+        return_value=[
+            {
+                "signal_name": "npm_provenance_verified",
+                "category": "provenance",
+                "verdict_impact": "none",
+                "evidence": "npm provenance verified for lodash@4.17.21.",
+                "source": "registry",
+                "artifact": "lodash@4.17.21",
+                "evidence_url": "https://registry.npmjs.org",
+            }
+        ],
+    ):
+        result = vet_package({"ecosystem": "npm", "packageName": "lodash", "version": "4.17.21"})
+
+    assert result["verdict"] == "allow"
+    assert any(item["label"] == "npm_provenance_verified" for item in result["evidence"])
+
+
 def test_feed_refresh_failure_warns_when_hosted_feed_is_configured(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
     monkeypatch.setenv("POUNCE_IOC_FEED_URL", "https://feed.example/intel.json")

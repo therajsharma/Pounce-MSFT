@@ -1,20 +1,33 @@
 from __future__ import annotations
 
-import json
+import os
 import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, build_opener
 
-from pounce_sentinel.feeds import HTTP_USER_AGENT, IntelUnavailable, parse_timestamp
+from pounce_sentinel.feeds import (
+    HTTP_USER_AGENT,
+    MAX_HTTP_RESPONSE_BYTES,
+    IntelUnavailable,
+    NoRedirectHandler,
+    _response_text,
+    parse_timestamp,
+    validate_https_url,
+)
+from pounce_sentinel.provenance import ProvenanceResult, verify_npm_attestation
 
 NPM_PACKAGE_RE = re.compile(r"^(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+$", re.IGNORECASE)
 
 
 def registry_findings(ecosystem: str, package_name: str, version: str) -> list[dict[str, Any]]:
-    if ecosystem != "npm":
-        return []
+    if ecosystem == "npm":
+        return _npm_findings(package_name, version)
+    return []
+
+
+def _npm_findings(package_name: str, version: str) -> list[dict[str, Any]]:
     artifact = f"{package_name}@{version}"
     try:
         package_index = load_npm_package_index(package_name)
@@ -26,29 +39,67 @@ def registry_findings(ecosystem: str, package_name: str, version: str) -> list[d
     if not isinstance(metadata, dict):
         return [_finding("verification_unavailable", "verification", "warn", f"npm registry metadata for {artifact} was not available.", "registry", artifact)]
 
-    findings = check_npm_missing_provenance(package_name, version, metadata)
+    if _has_attestations(metadata):
+        findings = check_npm_provenance_verification(package_name, version, package_index)
+    else:
+        findings = check_npm_missing_provenance(package_name, version, metadata)
     findings.extend(check_npm_provenance_regression(package_name, version, package_index))
     return findings
+
+
+def _fetch_json(url: str) -> Any:
+    validate_https_url(url, purpose="Registry request")
+    request = Request(url, headers={"Accept": "application/json", "User-Agent": HTTP_USER_AGENT})
+    try:
+        with build_opener(NoRedirectHandler).open(request, timeout=20) as response:
+            text = _response_text(response, url=url, max_response_bytes=MAX_HTTP_RESPONSE_BYTES)
+    except HTTPError as exc:
+        if 300 <= exc.code < 400:
+            raise IntelUnavailable(f"{url} attempted a disallowed redirect.") from exc
+        raise IntelUnavailable(f"{url} returned HTTP {exc.code}: {exc.reason}") from exc
+    except URLError as exc:
+        raise IntelUnavailable(f"{url} could not be reached: {exc.reason}") from exc
+    import json
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise IntelUnavailable(f"{url} returned invalid JSON.") from exc
 
 
 def load_npm_package_index(package_name: str) -> dict[str, Any]:
     normalized = package_name.strip().lower()
     if not NPM_PACKAGE_RE.match(normalized):
         raise IntelUnavailable("Package name must be a registry package name.")
-    url = f"https://registry.npmjs.org/{quote(normalized, safe='@/')}"
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": HTTP_USER_AGENT})
-    try:
-        with build_opener().open(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        raise IntelUnavailable(f"{url} returned HTTP {exc.code}: {exc.reason}") from exc
-    except URLError as exc:
-        raise IntelUnavailable(f"{url} could not be reached: {exc.reason}") from exc
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise IntelUnavailable(f"{url} returned invalid JSON.") from exc
+    payload = _fetch_json(f"https://registry.npmjs.org/{quote(normalized, safe='@/')}")
     if not isinstance(payload, dict):
-        raise IntelUnavailable(f"{url} returned an invalid package document.")
+        raise IntelUnavailable("npm registry returned an invalid package document.")
     return payload
+
+
+def load_npm_attestations(package_name: str, version: str) -> dict[str, Any]:
+    normalized = package_name.strip().lower()
+    if not NPM_PACKAGE_RE.match(normalized):
+        raise IntelUnavailable("Package name must be a registry package name.")
+    spec = f"{quote(normalized, safe='@/')}@{quote(version, safe='')}"
+    payload = _fetch_json(f"https://registry.npmjs.org/-/npm/v1/attestations/{spec}")
+    return payload if isinstance(payload, dict) else {}
+
+
+def check_npm_provenance_verification(package_name: str, version: str, package_index: dict[str, Any]) -> list[dict[str, Any]]:
+    artifact = f"{package_name}@{version}"
+    versions = package_index.get("versions") if isinstance(package_index.get("versions"), dict) else {}
+    metadata = versions.get(version) if isinstance(versions.get(version), dict) else {}
+    dist = metadata.get("dist") if isinstance(metadata.get("dist"), dict) else {}
+    integrity = str(dist.get("integrity") or "")
+    if not integrity:
+        return [_finding("npm_provenance_no_integrity", "provenance", "warn", f"npm registry exposed no dist.integrity for {artifact}; cannot bind provenance.", "registry", artifact)]
+    try:
+        attestations = load_npm_attestations(package_name, version)
+    except IntelUnavailable as exc:
+        return [_finding("npm_provenance_no_attestation", "provenance", "warn", f"npm attestations could not be loaded for {artifact}: {exc}", "registry", artifact)]
+    result = verify_npm_attestation(package_name, version, integrity, attestations, identity_allowlist=identity_allowlist())
+    return [_provenance_finding(result, artifact, "npm", "https://registry.npmjs.org")]
 
 
 def check_npm_missing_provenance(package_name: str, version: str, metadata: dict[str, Any]) -> list[dict[str, Any]]:
@@ -114,6 +165,29 @@ def _previous_version(package_index: dict[str, Any], version: str) -> str | None
 def _has_attestations(metadata: dict[str, Any]) -> bool:
     dist = metadata.get("dist") if isinstance(metadata.get("dist"), dict) else {}
     return bool(dist.get("attestations"))
+
+
+def identity_allowlist() -> list[str] | None:
+    raw = str(os.getenv("POUNCE_PROVENANCE_IDENTITY_ALLOWLIST", "")).strip()
+    if not raw:
+        return None
+    patterns = [part.strip() for part in re.split(r"[\n,]+", raw) if part.strip()]
+    return patterns or None
+
+
+def _provenance_finding(result: ProvenanceResult, artifact: str, ecosystem: str, evidence_url: str) -> dict[str, Any]:
+    if result.status == "verified":
+        signal, impact = f"{ecosystem}_provenance_verified", "none"
+        evidence = result.detail + (f" Identity: {result.identity}." if result.identity else "")
+    elif result.status == "no_attestation":
+        signal, impact = f"{ecosystem}_provenance_no_attestation", "warn"
+        evidence = result.detail
+    else:
+        signal, impact = f"{ecosystem}_attestation_invalid", "warn"
+        evidence = result.detail
+    finding = _finding(signal, "provenance", impact, evidence, "registry", artifact)
+    finding["evidence_url"] = evidence_url
+    return finding
 
 
 def _finding(
