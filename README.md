@@ -65,6 +65,7 @@ The planned public API is stable for the Microsoft integrations:
 
 - `POST /api/v1/vet-dependency`
 - `POST /api/v1/scan-manifest`
+- `POST /api/v1/scan-sbom`
 - `GET /api/v1/verdicts`
 - `GET /api/v1/verdicts/{auditId}/explain`
 - `GET /api/v1/status`
