@@ -2,6 +2,8 @@
 
 This runbook demonstrates Pounce Sentinel without a real Microsoft account, then lists the same moments to repeat after Azure setup.
 
+For the dedicated Foundry policy-agent walkthrough, use [docs/foundry-policy-agent-demo.md](foundry-policy-agent-demo.md).
+
 ## Local demo
 
 1. Run tests and smoke checks:
@@ -29,7 +31,16 @@ This runbook demonstrates Pounce Sentinel without a real Microsoft account, then
    "$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py vet npm event-stream 3.3.7
    ```
 
-5. Open the dashboard:
+5. Optionally refresh public feed state:
+
+   ```bash
+   "$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py sync-feeds
+   "$(bash scripts/resolve-python.sh)" services/policy-api/run_local.py status
+   ```
+
+   The status response should show the selected feed source, trust state, active item count, and any stale or refresh-failure warnings.
+
+6. Open the dashboard:
 
    ```bash
    pnpm install
@@ -39,7 +50,8 @@ This runbook demonstrates Pounce Sentinel without a real Microsoft account, then
 ## Cloud demo after account setup
 
 1. Deploy Azure resources with `scripts/deploy-azure.sh`.
-2. Import `integrations/foundry/openapi.yaml` into Foundry.
-3. Enable the GitHub Action workflow.
-4. Configure the Teams bot.
-5. Repeat the safe, warn, and block dependency cases through each surface.
+2. Import `integrations/foundry/openapi.yaml` into Foundry or attach `integrations/foundry/toolbox/pounce-sentinel-toolbox.json`.
+3. Trigger `POST /api/v1/feeds/sync` with the Function key, or wait for the 15-minute timer-trigger sync.
+4. Enable the GitHub Action workflow.
+5. Configure the Teams bot.
+6. Repeat the safe, warn, and block dependency cases through each surface.

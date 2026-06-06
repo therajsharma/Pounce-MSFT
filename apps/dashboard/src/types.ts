@@ -39,6 +39,16 @@ export interface ServiceFeed {
   name: string;
   status: string;
   updatedAgo: string;
+  selectedFrom?: string | null;
+  trustState?: string | null;
+  activeItemCount?: number;
+  cacheTimestamp?: string | null;
+  transportPolicy?: string | null;
+  warnings?: Array<{
+    code?: string;
+    detail?: string;
+    selected_from?: string | null;
+  }>;
 }
 
 export interface ServiceStatus {

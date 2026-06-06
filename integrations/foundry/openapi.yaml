@@ -1,8 +1,11 @@
 openapi: 3.0.3
 info:
-  title: Pounce Sentinel Foundry Tool
-  version: 0.1.0
-  description: Vet dependencies before a Microsoft Foundry agent installs or edits them.
+  title: Pounce Sentinel Foundry Tools
+  version: 0.2.0
+  description: >
+    Policy tools for Microsoft Foundry agents that need to vet dependency
+    installs, scan manifests, explain audit verdicts, and request governed
+    exceptions before continuing agentic development work.
 servers:
   - url: https://pouncesentineldev-api.azurewebsites.net/api
     description: Deployed Azure Functions API base URL.
@@ -13,7 +16,7 @@ paths:
     post:
       operationId: vet_dependency
       summary: Vet an exact dependency release.
-      description: Returns allow, warn, or block with policy evidence and audit metadata.
+      description: Returns allow, warn, or block with policy evidence, audit metadata, and propagated Foundry trace IDs.
       requestBody:
         required: true
         content:
@@ -27,6 +30,73 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VerdictResponse'
+  /v1/scan-manifest:
+    post:
+      operationId: scan_manifest
+      summary: Scan an inline manifest.
+      description: Extracts dependencies from a package manifest and vets every release with the same policy engine.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanManifestRequest'
+      responses:
+        '200':
+          description: Manifest scan result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanManifestResponse'
+  /v1/verdicts/{auditId}/explain:
+    get:
+      operationId: explain_verdict
+      summary: Explain a persisted verdict.
+      description: Returns a short security explanation and remediation guidance for an existing audit record.
+      parameters:
+        - name: auditId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: ps-1234abcd
+      responses:
+        '200':
+          description: Verdict explanation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExplainVerdictResponse'
+        '404':
+          description: Verdict was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/exceptions:
+    post:
+      operationId: request_exception
+      summary: Request a governed exception.
+      description: Opens a pending exception request for a blocked or warned audit verdict.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestExceptionRequest'
+      responses:
+        '202':
+          description: Exception request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestExceptionResponse'
+        '400':
+          description: Invalid exception request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     functionKey:
@@ -34,31 +104,94 @@ components:
       in: header
       name: x-functions-key
   schemas:
-    VetDependencyRequest:
+    FoundryTraceContext:
       type: object
-      required:
-        - ecosystem
-        - packageName
-        - version
       properties:
-        ecosystem:
+        traceId:
           type: string
-          enum: [npm, pypi]
-        packageName:
+          description: Cross-system trace identifier, copied from Foundry or caller context when available.
+        foundryTraceId:
           type: string
-          example: event-stream
-        version:
+          description: Microsoft Foundry trace identifier for this agent run or tool call.
+        traceparent:
           type: string
-          example: 3.3.7
-        source:
+          description: W3C traceparent value when the host sends distributed tracing headers.
+        spanId:
           type: string
-          example: foundry
-        repository:
+          description: Optional span identifier associated with the caller.
+        toolInvocationId:
           type: string
-          example: org/agent-service
-        actor:
-          type: string
-          example: foundry-agent
+          description: Optional Foundry or Agent Framework tool invocation identifier.
+    VetDependencyRequest:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          required:
+            - ecosystem
+            - packageName
+            - version
+          properties:
+            ecosystem:
+              type: string
+              enum: [npm, pypi]
+            packageName:
+              type: string
+              example: event-stream
+            version:
+              type: string
+              example: 3.3.7
+            source:
+              type: string
+              example: foundry
+            repository:
+              type: string
+              example: org/agent-service
+            actor:
+              type: string
+              example: foundry-agent
+    ScanManifestRequest:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          required:
+            - ecosystem
+            - content
+          properties:
+            ecosystem:
+              type: string
+              enum: [npm, pypi]
+            manifestPath:
+              type: string
+              example: package.json
+            content:
+              type: string
+              description: Inline manifest contents.
+            source:
+              type: string
+              example: foundry
+            repository:
+              type: string
+              example: org/agent-service
+            actor:
+              type: string
+              example: foundry-agent
+    RequestExceptionRequest:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          required:
+            - auditId
+            - reason
+          properties:
+            auditId:
+              type: string
+              example: ps-1234abcd
+            reason:
+              type: string
+              example: Temporary exception for demo-only package install in an isolated branch.
+            approver:
+              type: string
+              example: security-reviewer
     EvidenceItem:
       type: object
       properties:
@@ -69,40 +202,119 @@ components:
         url:
           type: string
     VerdictResponse:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          properties:
+            statusCode:
+              type: integer
+            auditId:
+              type: string
+            verdict:
+              type: string
+              enum: [allow, warn, block]
+            riskScore:
+              type: integer
+            ecosystem:
+              type: string
+            packageName:
+              type: string
+            version:
+              type: string
+            source:
+              type: string
+            repository:
+              type: string
+            actor:
+              type: string
+            reasons:
+              type: array
+              items:
+                type: string
+            evidence:
+              type: array
+              items:
+                $ref: '#/components/schemas/EvidenceItem'
+            recommendedVersion:
+              type: string
+              nullable: true
+            policyId:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+    ScanManifestResponse:
       type: object
       properties:
-        auditId:
-          type: string
-        verdict:
-          type: string
-          enum: [allow, warn, block]
-        riskScore:
+        statusCode:
           type: integer
-        ecosystem:
+        manifestPath:
           type: string
-        packageName:
-          type: string
-        version:
-          type: string
-        source:
-          type: string
-        repository:
-          type: string
-        actor:
-          type: string
-        reasons:
+        dependencyCount:
+          type: integer
+        blockedCount:
+          type: integer
+        warningCount:
+          type: integer
+        verdicts:
           type: array
           items:
-            type: string
-        evidence:
-          type: array
-          items:
-            $ref: '#/components/schemas/EvidenceItem'
-        recommendedVersion:
+            $ref: '#/components/schemas/VerdictResponse'
+    ExplainVerdictResponse:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          properties:
+            statusCode:
+              type: integer
+            auditId:
+              type: string
+            summary:
+              type: string
+            verdict:
+              type: string
+              enum: [allow, warn, block]
+            riskScore:
+              type: integer
+            policyId:
+              type: string
+            reasons:
+              type: array
+              items:
+                type: string
+            evidence:
+              type: array
+              items:
+                $ref: '#/components/schemas/EvidenceItem'
+            remediation:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+    RequestExceptionResponse:
+      allOf:
+        - $ref: '#/components/schemas/FoundryTraceContext'
+        - type: object
+          properties:
+            statusCode:
+              type: integer
+            exceptionId:
+              type: string
+            auditId:
+              type: string
+            approver:
+              type: string
+            status:
+              type: string
+            reason:
+              type: string
+            requestedAt:
+              type: string
+              format: date-time
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        error:
           type: string
-          nullable: true
-        policyId:
-          type: string
-        createdAt:
-          type: string
-          format: date-time

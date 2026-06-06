@@ -29,4 +29,5 @@ bash scripts/deploy-function-app.sh
 - `/api/v1/vet-dependency`
 - `/api/v1/scan-manifest`
 - `/api/v1/verdicts`
+- `/api/v1/verdicts/{auditId}/explain`
 - `/api/v1/exceptions`

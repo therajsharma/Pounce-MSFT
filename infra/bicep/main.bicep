@@ -135,8 +135,36 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployFunctionApp) {
           value: exceptions.name
         }
         {
+          name: 'AZURE_COSMOS_FEED_STATE_CONTAINER'
+          value: feedState.name
+        }
+        {
           name: 'AZURE_COSMOS_CONNECTION_STRING'
           value: '@Microsoft.KeyVault(SecretUri=https://${keyVault.name}.vault.azure.net/secrets/pounce-cosmos-connection-string/)'
+        }
+        {
+          name: 'POUNCE_IOC_FEED_URL'
+          value: ''
+        }
+        {
+          name: 'POUNCE_FEED_STALE_AFTER_HOURS'
+          value: '1'
+        }
+        {
+          name: 'POUNCE_FEED_FAILURE_MODE'
+          value: 'warn'
+        }
+        {
+          name: 'POUNCE_VULNERABILITY_ACTION'
+          value: 'warn'
+        }
+        {
+          name: 'POUNCE_ENABLE_LIVE_LOOKUPS'
+          value: 'false'
+        }
+        {
+          name: 'POUNCE_ENABLE_REGISTRY_PROVENANCE'
+          value: 'false'
         }
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
@@ -239,6 +267,38 @@ resource exceptions 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containe
       id: 'exceptions'
       partitionKey: {
         paths: ['/auditId']
+        kind: 'Hash'
+      }
+      indexingPolicy: {
+        automatic: true
+        indexingMode: 'consistent'
+        includedPaths: [
+          {
+            path: '/*'
+          }
+        ]
+        excludedPaths: [
+          {
+            path: '/"_etag"/?'
+          }
+        ]
+      }
+      conflictResolutionPolicy: {
+        mode: 'LastWriterWins'
+        conflictResolutionPath: '/_ts'
+      }
+    }
+  }
+}
+
+resource feedState 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  parent: database
+  name: 'feed_state'
+  properties: {
+    resource: {
+      id: 'feed_state'
+      partitionKey: {
+        paths: ['/kind']
         kind: 'Hash'
       }
       indexingPolicy: {

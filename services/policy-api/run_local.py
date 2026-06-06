@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from pounce_sentinel.api import scan_manifest, service_status, vet_dependency
+from pounce_sentinel.api import scan_manifest, service_status, sync_feeds, vet_dependency
 
 
 def main() -> None:
@@ -11,6 +11,7 @@ def main() -> None:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     subcommands.add_parser("status")
+    subcommands.add_parser("sync-feeds")
 
     vet = subcommands.add_parser("vet")
     vet.add_argument("ecosystem", choices=["npm", "pypi"])
@@ -28,6 +29,10 @@ def main() -> None:
 
     if args.command == "status":
         print(json.dumps(service_status(), indent=2))
+        return
+
+    if args.command == "sync-feeds":
+        print(json.dumps(sync_feeds({"source": "local-cli"}), indent=2))
         return
 
     if args.command == "vet":
@@ -60,4 +65,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

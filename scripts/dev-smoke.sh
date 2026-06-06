@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Running Python policy tests"
+echo "Running Python policy and Foundry wrapper tests"
 PYTHON_BIN="$(bash scripts/resolve-python.sh)"
-"${PYTHON_BIN}" -m pytest services/policy-api/tests -q
+bash scripts/python-test.sh
 
 echo "Checking local status"
 "${PYTHON_BIN}" services/policy-api/run_local.py status

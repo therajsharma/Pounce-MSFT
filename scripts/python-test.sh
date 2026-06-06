@@ -10,5 +10,4 @@ if ! "${PYTHON_BIN}" -c 'import pytest' >/dev/null 2>&1; then
   exit 1
 fi
 
-"${PYTHON_BIN}" -m pytest services/policy-api/tests -q
-
+"${PYTHON_BIN}" -m pytest services/policy-api/tests integrations/foundry/agent/tests -q

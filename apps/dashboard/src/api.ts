@@ -38,9 +38,9 @@ export function fallbackDashboardData(): DashboardData {
         azureAudit: 'demo-data'
       },
       feeds: [
-        { name: 'seeded-malware-intel', status: 'demo', updatedAgo: '1 min' },
-        { name: 'security-advisories', status: 'demo', updatedAgo: '3 min' },
-        { name: 'sbom-policy', status: 'demo', updatedAgo: '2 min' }
+        { name: 'seeded-malware-intel', status: 'demo', updatedAgo: '1 min', selectedFrom: 'seed', trustState: 'bundled_seed', activeItemCount: 5 },
+        { name: 'security-advisories', status: 'demo', updatedAgo: '3 min', selectedFrom: 'seed', trustState: 'bundled_seed', activeItemCount: 5 },
+        { name: 'sbom-policy', status: 'demo', updatedAgo: '2 min', selectedFrom: 'seed', trustState: 'bundled_seed', activeItemCount: 5 }
       ]
     },
     verdicts: fallbackVerdictRows,
