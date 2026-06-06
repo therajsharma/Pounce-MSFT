@@ -101,6 +101,43 @@ def test_blocks_normalized_feed_match(tmp_path, monkeypatch) -> None:
     assert result["evidence"][0]["source"] == "osv"
 
 
+def test_blocks_feed_range_match(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_FEED_STALE_AFTER_HOURS", "1000000")  # isolate range matching from staleness
+    persist_feed_cache(
+        {
+            "schema_version": "1.0",
+            "generated_at": "2026-06-04T00:00:00Z",
+            "sources": [{"name": "osv", "status": "ok", "item_count": 1}],
+            "items": [
+                {
+                    "id": "OSV-2026-range:npm:demo:package_range",
+                    "kind": "malicious_package",
+                    "match": {"type": "package_range", "ecosystem": "npm", "name": "demo", "version_spec": ">=1.0.0, <1.2.8"},
+                    "action": "block",
+                    "confidence": 1.0,
+                    "reason": "Vulnerable version range.",
+                    "source": "osv",
+                    "source_refs": [{"kind": "osv", "id": "OSV-2026-range", "url": "https://osv.dev/vulnerability/OSV-2026-range"}],
+                    "published_at": "2026-06-01T00:00:00Z",
+                    "modified_at": "2026-06-04T00:00:00Z",
+                    "first_seen": "2026-06-04T00:00:00Z",
+                    "last_seen": "2026-06-04T00:00:00Z",
+                }
+            ],
+        },
+        fetched_at="2026-06-04T00:00:00Z",
+        fetched_from="local_sync",
+    )
+
+    blocked = vet_package({"ecosystem": "npm", "packageName": "demo", "version": "1.2.7"})
+    allowed = vet_package({"ecosystem": "npm", "packageName": "demo", "version": "1.2.8"})
+
+    assert blocked["verdict"] == "block"
+    assert blocked["policyId"] == "threat-intel-feed-block"
+    assert allowed["verdict"] == "allow"
+
+
 def test_warns_on_normalized_policy_feed_match(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
     persist_feed_cache(
@@ -180,6 +217,53 @@ def test_registry_provenance_warning_when_enabled(tmp_path, monkeypatch) -> None
 
     assert result["verdict"] == "warn"
     assert result["policyId"] == "registry-provenance-warning"
+
+
+def test_registry_provenance_verified_stays_allow(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_ENABLE_REGISTRY_PROVENANCE", "true")
+    with mock.patch(
+        "pounce_sentinel.policy.registry_findings",
+        return_value=[
+            {
+                "signal_name": "npm_provenance_verified",
+                "category": "provenance",
+                "verdict_impact": "none",
+                "evidence": "npm provenance verified for lodash@4.17.21.",
+                "source": "registry",
+                "artifact": "lodash@4.17.21",
+                "evidence_url": "https://registry.npmjs.org",
+            }
+        ],
+    ):
+        result = vet_package({"ecosystem": "npm", "packageName": "lodash", "version": "4.17.21"})
+
+    assert result["verdict"] == "allow"
+    assert any(item["label"] == "npm_provenance_verified" for item in result["evidence"])
+
+
+def test_pypi_provenance_warning_when_enabled(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_ENABLE_PYPI_PROVENANCE", "true")
+    with mock.patch(
+        "pounce_sentinel.policy.registry_findings",
+        return_value=[
+            {
+                "signal_name": "pypi_attestation_invalid",
+                "category": "provenance",
+                "verdict_impact": "warn",
+                "evidence": "PyPI provenance verification failed.",
+                "source": "registry",
+                "artifact": "flask@3.1.0",
+                "evidence_url": "https://pypi.org",
+            }
+        ],
+    ):
+        result = vet_package({"ecosystem": "pypi", "packageName": "flask", "version": "3.1.0"})
+
+    assert result["verdict"] == "warn"
+    assert result["policyId"] == "registry-provenance-warning"
+    assert result["evidence"][0]["url"] == "https://pypi.org"
 
 
 def test_feed_refresh_failure_warns_when_hosted_feed_is_configured(tmp_path, monkeypatch) -> None:

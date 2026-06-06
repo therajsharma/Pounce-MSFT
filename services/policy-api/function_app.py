@@ -8,6 +8,7 @@ from pounce_sentinel.api import (
     explain_verdict,
     list_verdicts,
     scan_manifest,
+    scan_sbom,
     service_status,
     sync_feeds,
     vet_dependency,
@@ -65,6 +66,10 @@ if func is not None:
     @app.route(route="v1/scan-manifest", methods=["POST"])
     def scan(req: func.HttpRequest) -> func.HttpResponse:
         return _route(scan_manifest)(req)
+
+    @app.route(route="v1/scan-sbom", methods=["POST"])
+    def scan_sbom_route(req: func.HttpRequest) -> func.HttpResponse:
+        return _route(scan_sbom)(req)
 
     @app.route(route="v1/verdicts", methods=["GET"])
     def verdicts(req: func.HttpRequest) -> func.HttpResponse:

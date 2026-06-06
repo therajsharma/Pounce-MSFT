@@ -121,6 +121,28 @@ def test_on_demand_osv_items_normalizes_malware_as_block_and_vulnerabilities_as_
     assert actions["GHSA-demo"] == "warn"
 
 
+def test_normalize_osv_advisory_emits_package_range_from_events() -> None:
+    advisory = {
+        "id": "OSV-2026-range",
+        "summary": "Vulnerable range.",
+        "affected": [
+            {
+                "package": {"ecosystem": "npm", "name": "demo"},
+                "ranges": [
+                    {"type": "SEMVER", "events": [{"introduced": "1.0.0"}, {"fixed": "1.2.8"}]},
+                    {"type": "GIT", "events": [{"introduced": "0"}]},
+                ],
+            }
+        ],
+    }
+
+    items = normalize_osv_advisory(advisory, observed_at="2026-06-04T00:00:00Z", action="warn")
+
+    ranges = [item for item in items if item["match"]["type"] == "package_range"]
+    assert len(ranges) == 1  # SEMVER range emitted, GIT range skipped
+    assert ranges[0]["match"]["version_spec"] == ">=1.0.0, <1.2.8"
+
+
 def test_normalize_osv_advisory_adds_url_indicators() -> None:
     advisory = {
         "id": "MAL-2026-1",

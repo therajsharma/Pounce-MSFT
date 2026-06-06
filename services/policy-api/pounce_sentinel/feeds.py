@@ -12,7 +12,9 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from pounce_sentinel.intel import SEEDED_INTEL
+from pounce_sentinel import signatures
 from pounce_sentinel import storage
+from pounce_sentinel import version_ranges
 
 FEED_SCHEMA_VERSION = "1.0"
 DEFAULT_FEED_STALE_AFTER_HOURS = 6
@@ -133,6 +135,7 @@ def normalize_feed_artifact(
     default_source: str = "feed",
 ) -> dict[str, Any]:
     observed = observed_at or iso_now()
+    signature: Any = None
     if isinstance(payload, list):
         raw_items = payload
         sources: list[dict[str, Any]] = []
@@ -143,6 +146,7 @@ def normalize_feed_artifact(
         sources = _normalize_sources(payload.get("sources"))
         generated_at = str(payload.get("generated_at", "")).strip() or observed
         schema_version = str(payload.get("schema_version", FEED_SCHEMA_VERSION)).strip() or FEED_SCHEMA_VERSION
+        signature = payload.get("signature")
     else:
         raise ValueError("Feed payload must be a JSON object or array.")
 
@@ -157,12 +161,15 @@ def normalize_feed_artifact(
         if normalized is not None
     ]
 
-    return {
+    artifact: dict[str, Any] = {
         "schema_version": schema_version,
         "generated_at": generated_at,
         "sources": sources,
         "items": sorted(items, key=lambda item: str(item.get("id", ""))),
     }
+    if signature not in {None, ""}:
+        artifact["signature"] = signature
+    return artifact
 
 
 def seeded_feed(*, observed_at: str | None = None) -> dict[str, Any]:
@@ -237,7 +244,9 @@ def match_package_items(
         match_type = str(match.get("type", "")).strip()
         if match_type == "package_exact" and str(match.get("version", "")).strip() == normalized_version:
             matches.append(item)
-        elif match_type == "package_range" and _range_matches(str(match.get("version_spec", "")), normalized_version):
+        elif match_type == "package_range" and _range_matches(
+            str(match.get("version_spec", "")), normalized_version, normalized_ecosystem
+        ):
             matches.append(item)
     return matches
 
@@ -254,6 +263,7 @@ def runtime_feed(feed_url: str | None = None) -> dict[str, Any]:
     selected_envelope = local_envelope if local_feed.get("items") else {}
     selected_from = "local_sync_cache" if local_feed.get("items") else "seed"
     warnings: list[dict[str, Any]] = []
+    remote_verified = False
 
     configured_url = str(feed_url or os.getenv("POUNCE_IOC_FEED_URL", "")).strip()
     if configured_url:
@@ -269,6 +279,7 @@ def runtime_feed(feed_url: str | None = None) -> dict[str, Any]:
                 cache_kind="remoteCache",
             )
             selected_from = "remote"
+            remote_verified = feed_signature_verification_enabled()
         except IntelUnavailable as exc:
             if remote_feed.get("items") and str(remote_envelope.get("fetched_from", "")).strip() == configured_url:
                 selected_feed = remote_feed
@@ -294,16 +305,17 @@ def runtime_feed(feed_url: str | None = None) -> dict[str, Any]:
     return {
         "feed": merged,
         "selected_from": selected_from,
-        "trust_state": trust_state(selected_from),
+        "trust_state": trust_state(selected_from, verified=remote_verified),
         "transport_policy": TRANSPORT_POLICY,
         "cache_timestamp": str(selected_envelope.get("fetched_at", "")).strip() or None,
         "warnings": warnings,
     }
 
 
-def trust_state(selected_from: str) -> str:
+def trust_state(selected_from: str, *, verified: bool = False) -> str:
+    if selected_from == "remote":
+        return "hosted_feed_verified" if verified else "hosted_feed_unverified"
     return {
-        "remote": "hosted_feed_unverified",
         "remote_cache": "hosted_feed_cache_unverified",
         "local_sync_cache": "local_sync_cache",
         "seed": "bundled_seed",
@@ -320,6 +332,7 @@ def feed_status_rows(context: dict[str, Any] | None = None) -> list[dict[str, An
         sources = [{"name": "policy-feed", "status": "unknown"}]
 
     selected_from = str(feed_context.get("selected_from", "seed")).strip() or "seed"
+    context_trust = str(feed_context.get("trust_state", "")).strip()
     cache_timestamp = str(feed_context.get("cache_timestamp") or feed.get("generated_at") or "").strip()
     active_count = len(active_feed_items(feed.get("items", []) if isinstance(feed.get("items"), list) else []))
     warnings = feed_context.get("warnings") if isinstance(feed_context.get("warnings"), list) else []
@@ -335,7 +348,7 @@ def feed_status_rows(context: dict[str, Any] | None = None) -> list[dict[str, An
                 "status": str(source.get("status", "unknown")).strip() or "unknown",
                 "updatedAgo": human_age(timestamp),
                 "selectedFrom": selected_from,
-                "trustState": trust_state(selected_from),
+                "trustState": context_trust or trust_state(selected_from),
                 "activeItemCount": active_count,
                 "cacheTimestamp": cache_timestamp or None,
                 "transportPolicy": TRANSPORT_POLICY,
@@ -351,6 +364,7 @@ def load_remote_feed(url: str) -> dict[str, Any]:
     try:
         with build_opener(NoRedirectHandler).open(request, timeout=20) as response:
             text = _response_text(response, url=url, max_response_bytes=MAX_HTTP_RESPONSE_BYTES)
+            response_headers = {key: value for key, value in response.headers.items()}
     except HTTPError as exc:
         if 300 <= exc.code < 400:
             raise IntelUnavailable("Hosted feed URL redirects are not allowed.") from exc
@@ -363,7 +377,38 @@ def load_remote_feed(url: str) -> dict[str, Any]:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
         raise IntelUnavailable(f"{url} returned invalid JSON.") from exc
+    _verify_feed_signature(url, payload, text, response_headers)
     return normalize_feed_artifact(payload, default_source="live_feed")
+
+
+def feed_signature_verification_enabled() -> bool:
+    return bool(signatures.load_trusted_public_keys())
+
+
+def _verify_feed_signature(url: str, payload: Any, raw_text: str, headers: dict[str, str]) -> None:
+    """Verify a hosted feed against operator-configured trusted keys.
+
+    When keys are configured, a valid signature is required: a missing or invalid
+    signature raises ``IntelUnavailable`` so ``runtime_feed`` falls back to the last
+    good cache/seed and surfaces a ``feed_refresh_failed`` warning. When no keys are
+    configured, verification is skipped (legacy ``hosted_feed_unverified`` behaviour).
+    """
+    trusted = signatures.load_trusted_public_keys()
+    if not trusted:
+        return
+    mode = str(os.getenv("POUNCE_FEED_SIGNATURE_MODE", "envelope")).strip().lower()
+    if mode == "header":
+        token = headers.get("X-Pounce-Feed-Signature") or headers.get("x-pounce-feed-signature")
+        payload_bytes = raw_text.encode("utf-8")
+    else:
+        token = payload.get("signature") if isinstance(payload, dict) else None
+        payload_bytes = signatures.canonicalize_envelope(payload) if isinstance(payload, dict) else b""
+    if not token:
+        raise IntelUnavailable(f"Hosted feed at {url} is missing a required signature.")
+    try:
+        signatures.verify_jws_compact(str(token), payload_bytes, trusted=trusted)
+    except signatures.FeedSignatureInvalid as exc:
+        raise IntelUnavailable(f"Hosted feed signature invalid: {exc}") from exc
 
 
 def validate_https_url(url: str, *, purpose: str) -> None:
@@ -531,13 +576,11 @@ def _feed_warning(code: str, detail: str, selected_from: str) -> dict[str, Any]:
     return {"code": code, "detail": detail, "selected_from": selected_from}
 
 
-def _range_matches(version_spec: str, version: str) -> bool:
+def _range_matches(version_spec: str, version: str, ecosystem: str) -> bool:
     spec = version_spec.strip()
     if not spec:
         return False
-    if spec.startswith("="):
-        return spec.lstrip("= ").strip() == version
-    return False
+    return version_ranges.satisfies(version, spec, ecosystem=ecosystem)
 
 
 def _response_text(response: Any, *, url: str, max_response_bytes: int) -> str:

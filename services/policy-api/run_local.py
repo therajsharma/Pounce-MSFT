@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from pounce_sentinel.api import scan_manifest, service_status, sync_feeds, vet_dependency
+from pounce_sentinel.api import scan_manifest, scan_sbom, service_status, sync_feeds, vet_dependency
 
 
 def main() -> None:
@@ -24,6 +24,9 @@ def main() -> None:
     scan = subcommands.add_parser("scan")
     scan.add_argument("ecosystem", choices=["npm", "pypi"])
     scan.add_argument("manifest_path")
+
+    scan_sbom_cmd = subcommands.add_parser("scan-sbom")
+    scan_sbom_cmd.add_argument("sbom_path")
 
     args = parser.parse_args()
 
@@ -46,6 +49,20 @@ def main() -> None:
                 "actor": args.actor,
             }
         )
+        print(json.dumps(result, indent=2))
+        return
+
+    if args.command == "scan-sbom":
+        with open(args.sbom_path, "r", encoding="utf-8") as sbom_file:
+            result = scan_sbom(
+                {
+                    "content": sbom_file.read(),
+                    "sbomPath": args.sbom_path,
+                    "repository": "org/agent-service",
+                    "source": "local-cli",
+                    "actor": "developer",
+                }
+            )
         print(json.dumps(result, indent=2))
         return
 
