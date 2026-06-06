@@ -160,7 +160,7 @@ def vet_package(payload: dict[str, Any]) -> dict[str, Any]:
             created_at=now,
         )
 
-    provenance_findings = registry_findings(ecosystem, package_name, version) if _registry_provenance_enabled() else []
+    provenance_findings = registry_findings(ecosystem, package_name, version) if _provenance_enabled(ecosystem) else []
     warn_findings = [finding for finding in provenance_findings if str(finding.get("verdict_impact")) == "warn"]
     verified_findings = [finding for finding in provenance_findings if str(finding.get("verdict_impact")) == "none"]
     if warn_findings:
@@ -392,6 +392,16 @@ def _live_lookups_enabled() -> bool:
 
 def _registry_provenance_enabled() -> bool:
     return _live_lookups_enabled() or str(os.getenv("POUNCE_ENABLE_REGISTRY_PROVENANCE", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _pypi_provenance_enabled() -> bool:
+    return _live_lookups_enabled() or str(os.getenv("POUNCE_ENABLE_PYPI_PROVENANCE", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _provenance_enabled(ecosystem: str) -> bool:
+    if ecosystem == "pypi":
+        return _pypi_provenance_enabled()
+    return _registry_provenance_enabled()
 
 
 def _provenance_fallback_url(ecosystem: str) -> str:

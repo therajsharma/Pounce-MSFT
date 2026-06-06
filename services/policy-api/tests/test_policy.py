@@ -242,6 +242,30 @@ def test_registry_provenance_verified_stays_allow(tmp_path, monkeypatch) -> None
     assert any(item["label"] == "npm_provenance_verified" for item in result["evidence"])
 
 
+def test_pypi_provenance_warning_when_enabled(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
+    monkeypatch.setenv("POUNCE_ENABLE_PYPI_PROVENANCE", "true")
+    with mock.patch(
+        "pounce_sentinel.policy.registry_findings",
+        return_value=[
+            {
+                "signal_name": "pypi_attestation_invalid",
+                "category": "provenance",
+                "verdict_impact": "warn",
+                "evidence": "PyPI provenance verification failed.",
+                "source": "registry",
+                "artifact": "flask@3.1.0",
+                "evidence_url": "https://pypi.org",
+            }
+        ],
+    ):
+        result = vet_package({"ecosystem": "pypi", "packageName": "flask", "version": "3.1.0"})
+
+    assert result["verdict"] == "warn"
+    assert result["policyId"] == "registry-provenance-warning"
+    assert result["evidence"][0]["url"] == "https://pypi.org"
+
+
 def test_feed_refresh_failure_warns_when_hosted_feed_is_configured(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("POUNCE_SENTINEL_FEED_STATE_PATH", str(tmp_path / "feed-state.json"))
     monkeypatch.setenv("POUNCE_IOC_FEED_URL", "https://feed.example/intel.json")

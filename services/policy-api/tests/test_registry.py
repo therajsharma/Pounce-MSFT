@@ -72,3 +72,23 @@ def test_npm_attestation_invalid_warns() -> None:
 
     assert {finding["signal_name"] for finding in findings} == {"npm_attestation_invalid"}
 
+
+def test_pypi_provenance_invalid_warns() -> None:
+    files = [{"filename": "requests-2.32.5.tar.gz", "sha256": "ab", "packagetype": "sdist"}]
+    with mock.patch("pounce_sentinel.registry.load_pypi_release_files", return_value=files), mock.patch(
+        "pounce_sentinel.registry.load_pypi_provenance", return_value={"attestation_bundles": [{}]}
+    ), mock.patch("pounce_sentinel.registry.verify_pypi_attestation", return_value=ProvenanceResult("invalid", "bad")):
+        findings = registry_findings("pypi", "requests", "2.32.5")
+
+    assert {finding["signal_name"] for finding in findings} == {"pypi_attestation_invalid"}
+
+
+def test_pypi_provenance_missing_warns() -> None:
+    files = [{"filename": "requests-2.32.5.tar.gz", "sha256": "ab", "packagetype": "sdist"}]
+    with mock.patch("pounce_sentinel.registry.load_pypi_release_files", return_value=files), mock.patch(
+        "pounce_sentinel.registry.load_pypi_provenance", return_value={"missing": True}
+    ):
+        findings = registry_findings("pypi", "requests", "2.32.5")
+
+    assert {finding["signal_name"] for finding in findings} == {"pypi_provenance_no_attestation"}
+

@@ -16,14 +16,17 @@ from pounce_sentinel.feeds import (
     parse_timestamp,
     validate_https_url,
 )
-from pounce_sentinel.provenance import ProvenanceResult, verify_npm_attestation
+from pounce_sentinel.provenance import ProvenanceResult, verify_npm_attestation, verify_pypi_attestation
 
 NPM_PACKAGE_RE = re.compile(r"^(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+$", re.IGNORECASE)
+PYPI_PROJECT_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$", re.IGNORECASE)
 
 
 def registry_findings(ecosystem: str, package_name: str, version: str) -> list[dict[str, Any]]:
     if ecosystem == "npm":
         return _npm_findings(package_name, version)
+    if ecosystem == "pypi":
+        return check_pypi_provenance(package_name, version)
     return []
 
 
@@ -47,9 +50,9 @@ def _npm_findings(package_name: str, version: str) -> list[dict[str, Any]]:
     return findings
 
 
-def _fetch_json(url: str) -> Any:
+def _fetch_json(url: str, *, accept: str = "application/json") -> Any:
     validate_https_url(url, purpose="Registry request")
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": HTTP_USER_AGENT})
+    request = Request(url, headers={"Accept": accept, "User-Agent": HTTP_USER_AGENT})
     try:
         with build_opener(NoRedirectHandler).open(request, timeout=20) as response:
             text = _response_text(response, url=url, max_response_bytes=MAX_HTTP_RESPONSE_BYTES)
@@ -100,6 +103,53 @@ def check_npm_provenance_verification(package_name: str, version: str, package_i
         return [_finding("npm_provenance_no_attestation", "provenance", "warn", f"npm attestations could not be loaded for {artifact}: {exc}", "registry", artifact)]
     result = verify_npm_attestation(package_name, version, integrity, attestations, identity_allowlist=identity_allowlist())
     return [_provenance_finding(result, artifact, "npm", "https://registry.npmjs.org")]
+
+
+def load_pypi_release_files(project: str, version: str) -> list[dict[str, str]]:
+    if not PYPI_PROJECT_RE.match(project.strip()):
+        raise IntelUnavailable("Project name must be a PyPI project name.")
+    payload = _fetch_json(f"https://pypi.org/pypi/{quote(project.strip(), safe='')}/{quote(version.strip(), safe='')}/json")
+    urls = payload.get("urls") if isinstance(payload, dict) else None
+    files: list[dict[str, str]] = []
+    for entry in urls or []:
+        if not isinstance(entry, dict):
+            continue
+        filename = str(entry.get("filename") or "").strip()
+        digests = entry.get("digests") if isinstance(entry.get("digests"), dict) else {}
+        sha256 = str(digests.get("sha256") or "").strip()
+        if filename and sha256:
+            files.append({"filename": filename, "sha256": sha256, "packagetype": str(entry.get("packagetype") or "").strip()})
+    return files
+
+
+def load_pypi_provenance(project: str, version: str, filename: str) -> dict[str, Any]:
+    url = f"https://pypi.org/integrity/{quote(project.strip(), safe='')}/{quote(version.strip(), safe='')}/{quote(filename, safe='')}/provenance"
+    try:
+        payload = _fetch_json(url, accept="application/vnd.pypi.integrity.v1+json")
+    except IntelUnavailable as exc:
+        if "HTTP 404" in str(exc):
+            return {"missing": True}
+        raise
+    return payload if isinstance(payload, dict) else {"missing": True}
+
+
+def check_pypi_provenance(project: str, version: str) -> list[dict[str, Any]]:
+    artifact = f"{project}@{version}"
+    try:
+        files = load_pypi_release_files(project, version)
+    except IntelUnavailable as exc:
+        return [_finding("pypi_provenance_unavailable", "provenance", "warn", f"PyPI release metadata could not be loaded for {artifact}: {exc}", "registry", artifact, "https://pypi.org")]
+    if not files:
+        return [_finding("pypi_provenance_unavailable", "provenance", "warn", f"No distributable files were found for {artifact}.", "registry", artifact, "https://pypi.org")]
+    target = next((entry for entry in files if entry.get("packagetype") == "sdist"), files[0])
+    try:
+        provenance_payload = load_pypi_provenance(project, version, target["filename"])
+    except IntelUnavailable as exc:
+        return [_finding("pypi_provenance_unavailable", "provenance", "warn", f"PyPI provenance could not be loaded for {artifact}: {exc}", "registry", artifact, "https://pypi.org")]
+    if provenance_payload.get("missing"):
+        return [_provenance_finding(ProvenanceResult("no_attestation", f"No PEP 740 provenance is published for {target['filename']}."), artifact, "pypi", "https://pypi.org")]
+    result = verify_pypi_attestation(project, version, target["filename"], target["sha256"], provenance_payload, identity_allowlist=identity_allowlist())
+    return [_provenance_finding(result, artifact, "pypi", "https://pypi.org")]
 
 
 def check_npm_missing_provenance(package_name: str, version: str, metadata: dict[str, Any]) -> list[dict[str, Any]]:
@@ -197,8 +247,9 @@ def _finding(
     evidence: str,
     source: str,
     artifact: str,
+    evidence_url: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    finding = {
         "signal_name": signal_name,
         "category": category,
         "verdict_impact": verdict_impact,
@@ -206,4 +257,7 @@ def _finding(
         "source": source,
         "artifact": artifact,
     }
+    if evidence_url:
+        finding["evidence_url"] = evidence_url
+    return finding
 

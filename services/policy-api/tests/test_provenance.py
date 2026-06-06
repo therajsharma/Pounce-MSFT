@@ -117,3 +117,47 @@ def test_verify_npm_attestation_rejects_identity_not_in_allowlist() -> None:
 
 def test_verify_npm_attestation_no_attestation() -> None:
     assert provenance.verify_npm_attestation("demo", "1.0.0", "sha512-AAAA", {"attestations": []}).status == "no_attestation"
+
+
+def _pypi_payload(statement_bytes: bytes, *, san: str = "https://github.com/pypa/requests/.github/workflows/release.yml@refs/tags/v2.32.5") -> dict:
+    key = ec.generate_private_key(ec.SECP256R1())
+    cert = _make_cert(key, san)
+    signature = key.sign(provenance.dsse_pae("application/vnd.in-toto+json", statement_bytes), ec.ECDSA(hashes.SHA256()))
+    return {
+        "version": 1,
+        "attestation_bundles": [
+            {
+                "attestations": [
+                    {
+                        "version": 1,
+                        "verification_material": {"certificate": base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode()},
+                        "envelope": {
+                            "statement": base64.b64encode(statement_bytes).decode(),
+                            "signature": base64.b64encode(signature).decode(),
+                        },
+                    }
+                ]
+            }
+        ],
+    }
+
+
+def test_verify_pypi_attestation_happy_path() -> None:
+    filename = "requests-2.32.5.tar.gz"
+    payload = _pypi_payload(_statement(filename, "sha256", _SHA256))
+
+    result = provenance.verify_pypi_attestation("requests", "2.32.5", filename, _SHA256.hex(), payload)
+
+    assert result.status == "verified"
+    assert "github.com/pypa/requests" in (result.identity or "")
+
+
+def test_verify_pypi_attestation_rejects_wrong_digest() -> None:
+    filename = "requests-2.32.5.tar.gz"
+    payload = _pypi_payload(_statement(filename, "sha256", bytes(reversed(range(32)))))
+
+    assert provenance.verify_pypi_attestation("requests", "2.32.5", filename, _SHA256.hex(), payload).status == "invalid"
+
+
+def test_verify_pypi_attestation_no_bundles() -> None:
+    assert provenance.verify_pypi_attestation("requests", "2.32.5", "x.tar.gz", _SHA256.hex(), {"attestation_bundles": []}).status == "no_attestation"
