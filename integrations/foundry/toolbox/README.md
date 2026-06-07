@@ -10,7 +10,7 @@ Create the project connection first:
 ```bash
 azd ai connection create pounce-sentinel-api-key \
   --kind remote-tool \
-  --target https://pouncesentineldev-api.azurewebsites.net \
+  --target https://<function-app>.azurewebsites.net \
   --auth-type custom-keys \
   --custom-key "x-functions-key=<function-key>"
 ```
@@ -26,4 +26,3 @@ Regenerate the toolbox package after editing `integrations/foundry/openapi.yaml`
 ```bash
 python3 integrations/foundry/toolbox/render_toolbox.py
 ```
-

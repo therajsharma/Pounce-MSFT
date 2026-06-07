@@ -24,11 +24,11 @@ class PouncePolicyClient:
 
     @classmethod
     def from_env(cls) -> "PouncePolicyClient":
+        base_url = os.getenv("POUNCE_SENTINEL_API_BASE_URL")
+        if not base_url:
+            raise RuntimeError("POUNCE_SENTINEL_API_BASE_URL is required for the Foundry policy client.")
         return cls(
-            base_url=os.getenv(
-                "POUNCE_SENTINEL_API_BASE_URL",
-                "https://pouncesentineldev-api.azurewebsites.net/api",
-            ),
+            base_url=base_url,
             api_key=os.getenv("POUNCE_SENTINEL_API_KEY"),
             timeout_seconds=float(os.getenv("POUNCE_SENTINEL_API_TIMEOUT_SECONDS", "20")),
         )

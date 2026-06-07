@@ -7,7 +7,7 @@ info:
     installs, scan manifests, explain audit verdicts, and request governed
     exceptions before continuing agentic development work.
 servers:
-  - url: https://pouncesentineldev-api.azurewebsites.net/api
+  - url: https://<your-function-app>.azurewebsites.net/api
     description: Deployed Azure Functions API base URL.
 security:
   - functionKey: []

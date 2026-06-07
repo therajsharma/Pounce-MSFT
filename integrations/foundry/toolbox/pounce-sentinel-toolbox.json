@@ -16,7 +16,7 @@
           },
           "servers": [
             {
-              "url": "https://pouncesentineldev-api.azurewebsites.net/api",
+              "url": "https://<your-function-app>.azurewebsites.net/api",
               "description": "Deployed Azure Functions API base URL."
             }
           ],
@@ -30,7 +30,7 @@
               "post": {
                 "operationId": "vet_dependency",
                 "summary": "Vet an exact dependency release.",
-                "description": "Returns allow, warn, or block with policy evidence, audit metadata, and propagated Foundry trace IDs.",
+                "description": "Vet one npm or PyPI dependency before an agent installs it or edits it into a manifest. When the user says \"npm package event-stream version 3.3.7\", call this operation with ecosystem=\"npm\", packageName=\"event-stream\", and version=\"3.3.7\". Returns allow, warn, or block with policy evidence, audit metadata, and propagated Foundry trace IDs.\n",
                 "requestBody": {
                   "required": true,
                   "content": {
@@ -77,6 +77,35 @@
                       "application/json": {
                         "schema": {
                           "$ref": "#/components/schemas/ScanManifestResponse"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "/v1/scan-sbom": {
+              "post": {
+                "operationId": "scan_sbom",
+                "summary": "Scan a CycloneDX or SPDX SBOM.",
+                "description": "Parses an inline CycloneDX or SPDX JSON SBOM and vets every npm/pypi component with the same policy engine, returning one consolidated result.",
+                "requestBody": {
+                  "required": true,
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/ScanSbomRequest"
+                      }
+                    }
+                  }
+                },
+                "responses": {
+                  "200": {
+                    "description": "SBOM scan result.",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/ScanSbomResponse"
                         }
                       }
                     }
@@ -208,7 +237,10 @@
                     "required": [
                       "ecosystem",
                       "packageName",
-                      "version"
+                      "version",
+                      "source",
+                      "repository",
+                      "actor"
                     ],
                     "properties": {
                       "ecosystem": {
@@ -216,26 +248,34 @@
                         "enum": [
                           "npm",
                           "pypi"
-                        ]
+                        ],
+                        "description": "Package ecosystem. Use \"npm\" for npm/JavaScript packages and \"pypi\" for Python packages. If the prompt says \"npm package\", this value must be \"npm\".\n",
+                        "example": "npm"
                       },
                       "packageName": {
                         "type": "string",
+                        "description": "Package name only, without the version. For \"event-stream@3.3.7\" or \"event-stream version 3.3.7\", use \"event-stream\".\n",
                         "example": "event-stream"
                       },
                       "version": {
                         "type": "string",
+                        "description": "Package version or version range only. For \"event-stream@3.3.7\" or \"event-stream version 3.3.7\", use \"3.3.7\". For floating ranges, preserve the range such as \"^4.17.0\".\n",
                         "example": "3.3.7"
                       },
                       "source": {
                         "type": "string",
+                        "description": "Call source. For Microsoft Foundry agent calls, use \"foundry\".",
+                        "default": "foundry",
                         "example": "foundry"
                       },
                       "repository": {
                         "type": "string",
+                        "description": "Repository or workspace being changed.",
                         "example": "org/agent-service"
                       },
                       "actor": {
                         "type": "string",
+                        "description": "Agent or user requesting the dependency change.",
                         "example": "foundry-agent"
                       }
                     }
@@ -251,7 +291,10 @@
                     "type": "object",
                     "required": [
                       "ecosystem",
-                      "content"
+                      "content",
+                      "source",
+                      "repository",
+                      "actor"
                     ],
                     "properties": {
                       "ecosystem": {
@@ -259,7 +302,9 @@
                         "enum": [
                           "npm",
                           "pypi"
-                        ]
+                        ],
+                        "description": "Manifest ecosystem. Use \"npm\" for package.json content and \"pypi\" for requirements.txt content.\n",
+                        "example": "npm"
                       },
                       "manifestPath": {
                         "type": "string",
@@ -414,6 +459,98 @@
                   },
                   "warningCount": {
                     "type": "integer"
+                  },
+                  "verdicts": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/VerdictResponse"
+                    }
+                  }
+                }
+              },
+              "ScanSbomRequest": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/FoundryTraceContext"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "content"
+                    ],
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "Inline CycloneDX or SPDX JSON SBOM document."
+                      },
+                      "sbomPath": {
+                        "type": "string",
+                        "example": "bom.json"
+                      },
+                      "source": {
+                        "type": "string",
+                        "example": "foundry"
+                      },
+                      "repository": {
+                        "type": "string",
+                        "example": "org/agent-service"
+                      },
+                      "actor": {
+                        "type": "string",
+                        "example": "foundry-agent"
+                      }
+                    }
+                  }
+                ]
+              },
+              "ScanSbomResponse": {
+                "type": "object",
+                "properties": {
+                  "statusCode": {
+                    "type": "integer"
+                  },
+                  "sbomPath": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "cyclonedx",
+                      "spdx"
+                    ]
+                  },
+                  "specVersion": {
+                    "type": "string"
+                  },
+                  "componentCount": {
+                    "type": "integer"
+                  },
+                  "blockedCount": {
+                    "type": "integer"
+                  },
+                  "warningCount": {
+                    "type": "integer"
+                  },
+                  "skippedCount": {
+                    "type": "integer"
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "purl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    }
                   },
                   "verdicts": {
                     "type": "array",

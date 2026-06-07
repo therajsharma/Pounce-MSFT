@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PROJECT_ENDPOINT = "https://pounce-agentic-flow-resource.services.ai.azure.com/api/projects/pounce-agentic-flow"
 DEFAULT_MODEL = "gpt-4.1-mini"
 DEFAULT_AGENT_NAME = "pounce-sentinel-policy-guard"
 DEFAULT_CONNECTION_NAME = "pounce-sentinel-api"
@@ -130,7 +129,8 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create or update the Pounce Sentinel Foundry agent.")
     parser.add_argument(
         "--project-endpoint",
-        default=os.getenv("FOUNDRY_PROJECT_ENDPOINT", DEFAULT_PROJECT_ENDPOINT),
+        default=os.getenv("FOUNDRY_PROJECT_ENDPOINT"),
+        help="Foundry project endpoint. Defaults to FOUNDRY_PROJECT_ENDPOINT.",
     )
     parser.add_argument("--model", default=os.getenv("FOUNDRY_MODEL_DEPLOYMENT_NAME", DEFAULT_MODEL))
     parser.add_argument("--agent-name", default=os.getenv("FOUNDRY_AGENT_NAME", DEFAULT_AGENT_NAME))
@@ -145,7 +145,10 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=ROOT / ".azure" / "foundry-agent-setup.json",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.project_endpoint:
+        parser.error("FOUNDRY_PROJECT_ENDPOINT is required, or pass --project-endpoint.")
+    return args
 
 
 def _add_local_sdk_to_path() -> None:

@@ -35,7 +35,7 @@ Set runtime configuration:
 ```bash
 export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
 export FOUNDRY_MODEL_DEPLOYMENT_NAME="gpt-4.1-mini"
-export POUNCE_SENTINEL_API_BASE_URL="https://pouncesentineldev-api.azurewebsites.net/api"
+export POUNCE_SENTINEL_API_BASE_URL="https://<function-app>.azurewebsites.net/api"
 export POUNCE_SENTINEL_API_KEY="<function-key>"
 ```
 
