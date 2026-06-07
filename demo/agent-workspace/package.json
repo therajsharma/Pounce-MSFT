@@ -1,0 +1,7 @@
+{
+  "name": "pounce-agent-demo-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Disposable workspace for the Pounce Sentinel pre-install hook demo.",
+  "dependencies": {}
+}

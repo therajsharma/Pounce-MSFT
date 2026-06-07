@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+POLICY_PATH = REPO_ROOT / "services" / "policy-api"
+COMMANDS_TO_GUARD = {"install", "i", "add"}
+OPTIONS_WITH_VALUES = {
+    "-C",
+    "--cache",
+    "--cafile",
+    "--cert",
+    "--color",
+    "--depth",
+    "--fetch-retries",
+    "--fetch-retry-factor",
+    "--fetch-retry-maxtimeout",
+    "--fetch-retry-mintimeout",
+    "--globalconfig",
+    "--heading",
+    "--https-proxy",
+    "--key",
+    "--loglevel",
+    "--maxsockets",
+    "--node-options",
+    "--noproxy",
+    "--offline",
+    "--omit",
+    "--otp",
+    "--prefix",
+    "--proxy",
+    "--registry",
+    "--script-shell",
+    "--tag",
+    "--user-agent",
+    "--userconfig",
+    "--workspace",
+}
+
+
+def main() -> int:
+    _ensure_supported_python()
+
+    args = sys.argv[1:]
+    if not args:
+        return _exec_real_npm(args)
+
+    command_index = _find_command_index(args)
+    if command_index is None:
+        return _exec_real_npm(args)
+
+    command = args[command_index]
+    package_args = _package_args(args[command_index + 1 :])
+    workspace = Path.cwd()
+
+    _load_policy_modules()
+    from pounce_sentinel.api import scan_manifest, vet_dependency
+
+    print("Pounce Sentinel preflight")
+    print(f"workspace: {workspace}")
+
+    if package_args:
+        verdicts = [
+            _vet_package_spec(vet_dependency, package_spec, workspace)
+            for package_spec in package_args
+        ]
+    else:
+        manifest = workspace / "package.json"
+        if command in COMMANDS_TO_GUARD and manifest.exists():
+            result = scan_manifest(
+                {
+                    "ecosystem": "npm",
+                    "manifestPath": str(manifest),
+                    "content": manifest.read_text(encoding="utf-8"),
+                    "repository": os.getenv("POUNCE_REPOSITORY", _repo_name(workspace)),
+                    "source": "npm-pre-command-hook",
+                    "actor": os.getenv("POUNCE_ACTOR", "ai-agent"),
+                    "toolInvocationId": os.getenv("POUNCE_TOOL_INVOCATION_ID", "local-npm-wrapper"),
+                }
+            )
+            verdicts = list(result.get("verdicts", []))
+        else:
+            verdicts = []
+
+    if verdicts:
+        _print_verdicts(verdicts)
+
+    blocked = [verdict for verdict in verdicts if verdict.get("verdict") == "block"]
+    warnings = [verdict for verdict in verdicts if verdict.get("verdict") == "warn"]
+    if blocked:
+        print()
+        print("Pounce blocked this npm operation before npm was executed.")
+        print("Resolve the dependency or request an exception with the audit ID above.")
+        return 42
+
+    if warnings and os.getenv("POUNCE_WARN_MODE", "continue").lower() == "block":
+        print()
+        print("Pounce stopped this npm operation because warnings require review in this workspace.")
+        return 43
+
+    if os.getenv("POUNCE_NPM_DRY_RUN", "").lower() in {"1", "true", "yes"}:
+        print()
+        print("Pounce dry run: npm was not executed. Remove POUNCE_NPM_DRY_RUN to continue.")
+        return 0
+
+    print()
+    print("Pounce allowed npm to continue.")
+    return _exec_real_npm(args)
+
+
+def _load_policy_modules() -> None:
+    os.environ.setdefault("POUNCE_SENTINEL_AUDIT_PATH", str(REPO_ROOT / ".pounce-sentinel" / "verdicts.jsonl"))
+    os.environ.setdefault("POUNCE_SENTINEL_FEED_STATE_PATH", str(REPO_ROOT / ".pounce-sentinel" / "feed-state.json"))
+    sys.path.insert(0, str(POLICY_PATH))
+
+
+def _ensure_supported_python() -> None:
+    if sys.version_info >= (3, 11):
+        return
+
+    if os.getenv("_POUNCE_NPM_REEXEC") != "1":
+        resolver = REPO_ROOT / "scripts" / "resolve-python.sh"
+        try:
+            python = subprocess.check_output([str(resolver)], text=True).strip()
+        except subprocess.CalledProcessError:
+            python = ""
+        if python and Path(python).resolve() != Path(sys.executable).resolve():
+            env = os.environ.copy()
+            env["_POUNCE_NPM_REEXEC"] = "1"
+            os.execvpe(python, [python, str(Path(__file__).resolve()), *sys.argv[1:]], env)
+
+    print("Pounce Sentinel requires Python 3.11 or newer. Set PYTHON_BIN to a supported interpreter.", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def _find_command_index(args: list[str]) -> int | None:
+    for index, arg in enumerate(args):
+        if arg in COMMANDS_TO_GUARD:
+            return index
+    return None
+
+
+def _package_args(args: list[str]) -> list[str]:
+    packages: list[str] = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--":
+            continue
+        if arg in OPTIONS_WITH_VALUES:
+            skip_next = True
+            continue
+        if arg.startswith("--") and "=" not in arg:
+            continue
+        if arg.startswith("-"):
+            continue
+        packages.append(arg)
+    return packages
+
+
+def _vet_package_spec(vet_dependency: Any, package_spec: str, workspace: Path) -> dict[str, Any]:
+    package_name, version = _parse_npm_spec(package_spec)
+    return vet_dependency(
+        {
+            "ecosystem": "npm",
+            "packageName": package_name,
+            "version": version,
+            "repository": os.getenv("POUNCE_REPOSITORY", _repo_name(workspace)),
+            "source": "npm-pre-command-hook",
+            "actor": os.getenv("POUNCE_ACTOR", "ai-agent"),
+            "toolInvocationId": os.getenv("POUNCE_TOOL_INVOCATION_ID", "local-npm-wrapper"),
+        }
+    )
+
+
+def _parse_npm_spec(package_spec: str) -> tuple[str, str]:
+    normalized = package_spec.strip()
+    if normalized.startswith("@"):
+        version_separator = normalized.rfind("@")
+        if version_separator > 0:
+            return normalized[:version_separator], normalized[version_separator + 1 :] or "latest"
+        return normalized, "latest"
+
+    if "@" in normalized:
+        package_name, version = normalized.rsplit("@", 1)
+        return package_name, version or "latest"
+
+    return normalized, "latest"
+
+
+def _print_verdicts(verdicts: list[dict[str, Any]]) -> None:
+    for verdict in verdicts:
+        package = f"{verdict.get('packageName')}@{verdict.get('version')}"
+        decision = str(verdict.get("verdict", "unknown")).upper()
+        risk_score = verdict.get("riskScore", "unknown")
+        audit_id = verdict.get("auditId", "unknown")
+        print()
+        print(f"{decision} {package} | risk={risk_score} | audit={audit_id}")
+        for reason in verdict.get("reasons", []):
+            print(f"  reason: {reason}")
+        for evidence in verdict.get("evidence", []):
+            if isinstance(evidence, dict):
+                label = evidence.get("label", "evidence")
+                source = evidence.get("source", "unknown")
+                print(f"  evidence: {label} ({source})")
+        recommended = verdict.get("recommendedVersion")
+        if recommended and recommended != verdict.get("version"):
+            print(f"  recommended: {recommended}")
+
+
+def _repo_name(workspace: Path) -> str:
+    try:
+        relative = workspace.resolve().relative_to(REPO_ROOT)
+    except ValueError:
+        return workspace.name or "local-workspace"
+    return f"pounce-sentinel/{relative.as_posix()}"
+
+
+def _exec_real_npm(args: list[str]) -> int:
+    npm = os.getenv("POUNCE_REAL_NPM") or shutil.which("npm")
+    if not npm:
+        print("npm was not found. Set POUNCE_REAL_NPM to the real npm executable.", file=sys.stderr)
+        return 127
+    completed = subprocess.run([npm, *args], check=False)
+    return completed.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

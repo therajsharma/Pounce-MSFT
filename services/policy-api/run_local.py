@@ -3,7 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 
-from pounce_sentinel.api import scan_manifest, scan_sbom, service_status, sync_feeds, vet_dependency
+from pounce_sentinel.api import (
+    create_exception,
+    explain_verdict,
+    scan_manifest,
+    scan_sbom,
+    service_status,
+    sync_feeds,
+    vet_dependency,
+)
 
 
 def main() -> None:
@@ -28,6 +36,14 @@ def main() -> None:
     scan_sbom_cmd = subcommands.add_parser("scan-sbom")
     scan_sbom_cmd.add_argument("sbom_path")
 
+    explain = subcommands.add_parser("explain")
+    explain.add_argument("audit_id")
+
+    exception = subcommands.add_parser("exception")
+    exception.add_argument("audit_id")
+    exception.add_argument("reason")
+    exception.add_argument("--approver", default="local-reviewer")
+
     args = parser.parse_args()
 
     if args.command == "status":
@@ -36,6 +52,25 @@ def main() -> None:
 
     if args.command == "sync-feeds":
         print(json.dumps(sync_feeds({"source": "local-cli"}), indent=2))
+        return
+
+    if args.command == "explain":
+        print(json.dumps(explain_verdict(args.audit_id), indent=2))
+        return
+
+    if args.command == "exception":
+        print(
+            json.dumps(
+                create_exception(
+                    {
+                        "auditId": args.audit_id,
+                        "reason": args.reason,
+                        "approver": args.approver,
+                    }
+                ),
+                indent=2,
+            )
+        )
         return
 
     if args.command == "vet":
