@@ -1,8 +1,8 @@
 # Hackathon Pre-Install Demo
 
 This is the local fallback demo for Microsoft Build AI 2026, Security in the
-Agentic Future. The primary Microsoft-facing demo is
-`docs/hackathon-foundry-demo.md`.
+Agentic Future. It demonstrates the same policy behavior without requiring a
+live Microsoft tenant.
 
 Run it from:
 
@@ -14,7 +14,7 @@ The point of the demo is concrete: an AI coding agent recommends a package, the
 agent attempts `npm install`, and Pounce Sentinel checks the dependency before
 `npm` executes.
 
-For the most natural recording, wrap `npm` inside this terminal session:
+To route normal npm commands through Pounce in this terminal session, wrap `npm`:
 
 ```bash
 npm() { "$PWD/../../scripts/pounce-npm" "$@"; }
@@ -28,7 +28,7 @@ npm install event-stream@3.3.7
 
 ## Demo Script
 
-Use dry-run mode first so the video is repeatable and does not depend on npm
+Use dry-run mode first so the demo is repeatable and does not depend on npm
 network timing:
 
 ```bash
@@ -131,7 +131,7 @@ Then run:
 Expected result: Pounce scans the manifest and blocks before npm resolves or
 installs dependencies.
 
-Restore the original empty dependency object after recording this segment.
+Restore the original empty dependency object after this segment.
 
 ## Actual Install Mode
 

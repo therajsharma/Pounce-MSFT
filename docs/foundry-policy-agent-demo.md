@@ -55,7 +55,7 @@ Use this when the Azure Functions API is deployed and you have a Function key.
 Inputs you need:
 
 - `POUNCE_SENTINEL_API_BASE_URL`, for example
-  `https://pouncesentineldev-api.azurewebsites.net/api`
+  `https://<function-app>.azurewebsites.net/api`
 - `POUNCE_SENTINEL_API_KEY`
 - A Microsoft Foundry project endpoint and model deployment.
 
@@ -129,7 +129,7 @@ export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/pro
 
 azd ai connection create pounce-sentinel-api-key \
   --kind remote-tool \
-  --target https://pouncesentineldev-api.azurewebsites.net \
+  --target https://<function-app>.azurewebsites.net \
   --auth-type custom-keys \
   --custom-key "x-functions-key=<function-key>" \
   -p "$FOUNDRY_PROJECT_ENDPOINT"
@@ -156,7 +156,7 @@ pip install -r integrations/foundry/agent/requirements.txt
 
 export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
 export AZURE_AI_MODEL_DEPLOYMENT_NAME="<model-deployment>"
-export POUNCE_SENTINEL_API_BASE_URL="https://pouncesentineldev-api.azurewebsites.net/api"
+export POUNCE_SENTINEL_API_BASE_URL="https://<function-app>.azurewebsites.net/api"
 export POUNCE_SENTINEL_API_KEY="<function-key>"
 
 PYTHONPATH=integrations/foundry/agent python -m pounce_foundry_agent tools-json

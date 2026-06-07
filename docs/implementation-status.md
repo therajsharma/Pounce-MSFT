@@ -44,7 +44,6 @@ The most complete pieces are the policy API, deterministic demo scenarios, dashb
 | Foundry policy agent | Implemented as OpenAPI, Toolbox package, and Agent Framework wrapper | `integrations/foundry/openapi.yaml`, `integrations/foundry/toolbox/`, `integrations/foundry/agent/` |
 | Teams bot command parser | Implemented basic command surface | `apps/teams-bot/src/commands.ts`, `apps/teams-bot/src/index.ts` |
 | Demo runbook | Done | `docs/demo-runbook.md` |
-| Microsoft account setup doc | Done | `docs/microsoft-account-setup.md` |
 | Build 2026 upgrade note | Done | `docs/build-2026-upgrade-opportunities.md` |
 
 ## Capabilities Working Today

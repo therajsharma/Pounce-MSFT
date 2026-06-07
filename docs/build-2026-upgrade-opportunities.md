@@ -187,7 +187,7 @@ Build 2026 fit: Functions Flex Consumption is the forward path for new language 
 Implementation:
 
 - Add a `functionPlanSku` or `useFlexConsumption` parameter in Bicep.
-- Validate whether the current subscription/region supports the Flex path.
+- Validate whether the target subscription and region support the Flex path.
 - Upgrade local and Azure target to Python 3.13 after test verification.
 - Keep Python 3.11 fallback until the Function deployment is confirmed.
 - Use site-scoped certificates or mTLS only if Pounce needs stronger tool-to-policy API authentication than function keys.

@@ -93,9 +93,9 @@ Verdicts use this shape:
 }
 ```
 
-## Microsoft account handoff
+## Microsoft deployment notes
 
-Use [docs/microsoft-account-setup.md](docs/microsoft-account-setup.md) once the real Microsoft account is available. The setup path is intentionally parameterized:
+The deployment path is intentionally parameterized so real account values stay outside the repository:
 
 - Azure subscription and tenant values go into Bicep parameters or GitHub secrets.
 - API keys and bot credentials go into Key Vault or GitHub Actions secrets.
