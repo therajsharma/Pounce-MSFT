@@ -46,17 +46,6 @@ Working today:
 - Basic Teams bot command parser and Express scaffold for `status`, `explain`, and `approve`.
 - Bicep and GitHub workflows for Azure scaffold deployment and dashboard deployment.
 
-Still scoped as incomplete:
-
-- Tenant-side Foundry import, hosted-agent deployment, and playground validation.
-- Microsoft 365 Copilot publishing.
-- Teams Bot Framework auth, Teams app registration, adaptive approval cards, and real approval lifecycle.
-- Full PR diff scanning across every changed manifest and lockfile.
-- Lockfile/transitive dependency analysis for npm, pnpm, Poetry, uv, and pip-tools.
-- Production-grade exception enforcement, reviewer identity, expiry, and notifications.
-- Real sensitive tool-action enforcement beyond dashboard/demo rows.
-- OpenTelemetry/App Insights trace instrumentation beyond caller-provided trace metadata.
-
 ## Repository Layout
 
 ```text
